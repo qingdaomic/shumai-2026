@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import pool from './db.js';
 import authRouter from './api/auth.js';
 import questionsRouter from './api/questions.js';
 import progressRouter from './api/progress.js';
@@ -14,11 +18,16 @@ import teacherRouter from './api/teacher.js';
 import parentRouter from './api/parent.js';
 import subscriptionRouter from './api/subscription.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const ALLOWED_ORIGINS = process.env.NODE_ENV === 'production'
+  ? [process.env.FRONTEND_URL || 'https://shumai-2026.netlify.app']
+  : true;
+
 // 中间件
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 
 // 健康检查
@@ -46,28 +55,24 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: '服务器内部错误' });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🚀 数脉后端 运行在 http://localhost:${PORT}`);
-  console.log(`   GET  /api/health`);
-  console.log(`   POST /api/auth/register`);
-  console.log(`   POST /api/auth/login`);
-  console.log(`   GET  /api/questions/exam/:id`);
-  console.log(`   GET  /api/questions/basics/:topic`);
-  console.log(`   GET  /api/progress`);
-  console.log(`   PUT  /api/progress/:topicId`);
-  console.log(`   GET  /api/wechat/status`);
-  console.log(`   POST /api/ai/explain`);
-  console.log(`   POST /api/ai/wrong-analysis`);
-  console.log(`   POST /api/ai/chat`);
-  console.log(`   POST /api/paper/analyze`);
-  console.log(`   POST /api/paper/mock`);
-  console.log(`   GET  /api/daily`);
-  console.log(`   POST /api/daily/review`);
-  console.log(`   GET  /api/admin/config`);
-  console.log(`   GET  /api/admin/users`);
-  console.log(`   POST /api/ocr/analyze`);
-  console.log(`   POST /api/ocr/save`);
-  console.log(`   POST /api/ocr/text-analyze`);
-  console.log(`   GET  /api/teacher/classes`);
-  console.log(`   GET  /api/admin/stats\n`);
+// 自动初始化数据库表结构（生产环境启动时执行）
+async function initDb() {
+  try {
+    const schemaPath = join(__dirname, 'schema.sql');
+    const sql = readFileSync(schemaPath, 'utf8');
+    await pool.query(sql);
+    console.log('✅ 数据库表结构初始化完成');
+  } catch (err) {
+    console.warn('⚠ 数据库初始化跳过（可能已存在）:', err.message);
+  }
+}
+
+// 启动服务
+initDb().then(() => {
+  app.listen(PORT, () => {
+    console.log(`\n🚀 数脉后端 运行在 http://localhost:${PORT}`);
+    console.log(`   GET  /api/health`);
+    console.log(`   POST /api/auth/register`);
+    console.log(`   POST /api/auth/login\n`);
+  });
 });
