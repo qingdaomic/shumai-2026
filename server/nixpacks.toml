@@ -1,0 +1,8 @@
+# Nixpacks 构建配置 — Railway 部署
+# ffmpeg 用于 W1.4 微信语音 AMR→MP3 转换
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "ffmpeg"]
+
+[start]
+cmd = "node index.js"

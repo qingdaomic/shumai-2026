@@ -1,0 +1,25 @@
+{
+  "name": "shumai-server",
+  "version": "1.0.0",
+  "description": "数脉后端 — API + ClawBot + AI",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js",
+    "db:init": "node init-db.js",
+    "bot": "node bot.js",
+    "bot:dev": "node --watch bot.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
+    "node-cron": "^3.0.3",
+    "openai": "^4.72.0",
+    "pg": "^8.13.0"
+  }
+}

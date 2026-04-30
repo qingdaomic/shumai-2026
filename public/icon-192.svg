@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="32" fill="#040810"/>
+  <text x="96" y="72" text-anchor="middle" font-size="48" font-weight="bold" fill="#3a9eff" font-family="system-ui">数</text>
+  <text x="96" y="128" text-anchor="middle" font-size="48" font-weight="bold" fill="#1ed9a0" font-family="system-ui">脉</text>
+  <line x1="40" y1="148" x2="152" y2="148" stroke="#f5a623" stroke-width="3" stroke-linecap="round"/>
+  <line x1="40" y1="158" x2="120" y2="158" stroke="#f5a623" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+</svg>

@@ -1,0 +1,26 @@
+{
+  "name": "数脉 ShuMai · 中考数学",
+  "short_name": "数脉",
+  "description": "中考数学智能学习系统 — 1334道题，AI讲解，知识图谱",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#040810",
+  "background_color": "#040810",
+  "categories": ["education"],
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
