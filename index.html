@@ -35,6 +35,8 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
+      // API 后端地址（Railway 部署）
+      window.__SHUMAI_API = "https://shumai-2026-production.up.railway.app";
       // 注册 Service Worker
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
