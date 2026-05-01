@@ -7538,7 +7538,10 @@ function AIFloat({context}) {
    ROOT APP
 ════════════════════════════════════════════════════════════ */
 export default function App() {
-  const [view,setView]=useState("home");
+  const [view,setView]=useState(()=>{
+    const p=new URLSearchParams(window.location.search).get("view");
+    return p||"home";
+  });
   const [detailId,setDetailId]=useState(null);
   const bp = useWindowSize();
   const [sidebarOpen, setSidebarOpen] = useState(false);
