@@ -112,6 +112,23 @@ INSERT INTO system_config (key, value, label, category) VALUES
   ('cron_morning_push', '{"cron":"0 7 * * *","enabled":true,"desc":"早上7:00推送今日任务"}', '早间推送', 'cron'),
   ('cron_evening_push', '{"cron":"0 21 * * *","enabled":true,"desc":"晚上21:00推送学习小结"}', '晚间推送', 'cron'),
   ('cron_weekly_report', '{"cron":"0 8 * * 1","enabled":true,"desc":"每周一8:00推送周报"}', '周报推送', 'cron'),
+  ('cron_forget_curve', '{"cron":"0 14 * * *","enabled":true,"desc":"每天14:00遗忘曲线复习提醒"}', '遗忘曲线提醒', 'cron'),
+  ('cron_exam_countdown', '{"cron":"0 8 * * *","enabled":true,"desc":"每天8:00考前倒计时关键节点提醒"}', '考前倒计时提醒', 'cron'),
+  ('cron_weak_point', '{"cron":"0 20 * * 3","enabled":true,"desc":"每周三20:00薄弱点提醒"}', '薄弱点提醒', 'cron'),
   ('review_intervals', '{"days":[1,3,7,30]}', '遗忘曲线间隔（天）', 'learning'),
   ('sprint_phases', '{"patch":60,"enhance":21,"sprint":5,"warm":0}', '冲刺阶段天数阈值', 'learning')
 ON CONFLICT (key) DO NOTHING;
+
+-- 几何题 SVG 图形缓存表（全局共享，AI 生成一次所有用户共用）
+CREATE TABLE IF NOT EXISTS question_svgs (
+  question_id   VARCHAR(50) PRIMARY KEY,  -- 题目id，如 b_sim_01 或 exam_id
+  question_type VARCHAR(20) NOT NULL,      -- 'basic' | 'exam' | 'group'
+  svg_content   TEXT NOT NULL,             -- 完整 SVG 字符串
+  topic         VARCHAR(50),               -- 知识点，如 similar/pythagorean
+  generated_by  INT REFERENCES users(id),  -- 第一个触发生成的用户
+  view_count    INT DEFAULT 1,             -- 被查看次数（统计用）
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_svg_topic ON question_svgs(topic);
+CREATE INDEX IF NOT EXISTS idx_svg_type ON question_svgs(question_type);
