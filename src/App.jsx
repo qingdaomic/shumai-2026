@@ -1577,9 +1577,12 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
   // 跨模块导航历史（返回键用）
   const [moduleNavStack,setModuleNavStack]=useState([]);
   const navigateModule=(mod,{topic=null,group=null,final=null}={})=>{
-    setModuleNavStack(prev=>[...prev,{module:activeModule,selTopic,selGroup,selFinal,openQ}]);
+    setModuleNavStack(prev=>[...prev,{module:activeModule,selTopic,selGroup,selFinal,openQ,expandedTopic}]);
     setActiveModule(mod);
-    if(topic!==null) setSelTopic(topic);
+    if(topic!==null){
+      setSelTopic(topic);
+      if(mod==="m1") setExpandedTopic(topic); // M1用expandedTopic控制展开，selTopic在M1无效
+    }
     if(group!==null) setSelGroup(group);
     if(final!==null) setSelFinal(final);
     setOpenQ(null);
@@ -1592,6 +1595,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
     setSelTopic(prev.selTopic);
     setSelGroup(prev.selGroup);
     setSelFinal(prev.selFinal);
+    setExpandedTopic(prev.expandedTopic??null);
     if(prev.openQ) setOpenQ(prev.openQ);
   };
 
@@ -1799,7 +1803,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
 
                           {/* 按钮行 */}
                           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                            <button onClick={()=>{setActiveModule("m2");setSelTopic(t.id);}}
+                            <button onClick={()=>navigateModule("m2",{topic:t.id})}
                               style={{padding:"7px 16px",borderRadius:8,cursor:"pointer",fontSize:16,
                                 fontWeight:700,background:C.m2+"1a",color:C.m2,
                                 border:`1px solid ${C.m2}44`}}>
@@ -1941,7 +1945,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                           <Tag c={C.red}>{qs.length}道错题</Tag>
                           {/* 追因按钮：回到基础知识 */}
                           <button
-                            onClick={()=>{setActiveModule("m1");setExpandedTopic(tid);}}
+                            onClick={()=>navigateModule("m1",{topic:tid})}
                             style={{padding:"4px 12px",borderRadius:20,fontSize:15,
                               cursor:"pointer",background:C.m1+"1a",color:C.m1,
                               border:`1px solid ${C.m1}44`,fontWeight:600}}>
@@ -2027,7 +2031,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                   错{questionService.getBasicByTopic(selTopic).filter(q=>safeBasicWrong.has(q.id)).length}道
                 </span>
                 {/* 回到基础知识 */}
-                <button onClick={()=>{setActiveModule("m1");setExpandedTopic(selTopic);}}
+                <button onClick={()=>navigateModule("m1",{topic:selTopic})}
                   style={{padding:"5px 14px",borderRadius:8,fontSize:15,cursor:"pointer",
                     background:C.m1+"1a",color:C.m1,border:`1px solid ${C.m1}44`,
                     fontWeight:600}}>
@@ -2065,7 +2069,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                         <p style={{margin:0,fontSize:18,color:C.text,
                           lineHeight:1.8}}>{q.content}</p>
                       </div>
-                      <GeoFigure content={q.content} topicIds={[selTopic]}/>
+                      <GeoFigure content={q.content} topicIds={[selTopic]} questionId={q.id} questionType="basic"/>
                       <button onClick={()=>setOpenQ(isOpen?null:q.id)}
                         style={{fontSize:16,padding:"4px 12px",borderRadius:6,cursor:"pointer",
                           background:"none",color:C.geo,border:`1px solid ${C.geo}40`}}>
@@ -2121,7 +2125,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                               </div>
                               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                                 <button
-                                  onClick={()=>{setActiveModule("m1");setExpandedTopic(selTopic);}}
+                                  onClick={()=>navigateModule("m1",{topic:selTopic})}
                                   style={{padding:"5px 14px",borderRadius:7,cursor:"pointer",
                                     fontSize:16,fontWeight:700,background:C.m1,
                                     color:"white",border:"none"}}>
@@ -2141,7 +2145,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                   {(GRAPH[selTopic]?.pre||[]).map(pid=>{
                                     const pt=TOPIC_MAP[pid];if(!pt)return null;
                                     return(
-                                      <button key={pid} onClick={()=>{setSelTopic(pid);setActiveModule("m2");}}
+                                      <button key={pid} onClick={()=>navigateModule("m2",{topic:pid})}
                                         style={{padding:"2px 9px",borderRadius:20,fontSize:15,
                                           cursor:"pointer",background:C.red+"14",
                                           border:`1px solid ${C.red}33`,color:C.red}}>
@@ -2168,7 +2172,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                   if(!tg)return null;
                                   return(
                                     <button key={tgId}
-                                      onClick={()=>setActiveModule("m3")}
+                                      onClick={()=>navigateModule("m3")}
                                       style={{padding:"5px 12px",borderRadius:7,cursor:"pointer",
                                         fontSize:16,fontWeight:700,background:C.m3,
                                         color:"white",border:"none"}}>
@@ -2178,7 +2182,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                 })}
                                 {/* 压轴题推荐 */}
                                 {(GRAPH[selTopic]?.finalIds||[]).length>0&&(
-                                  <button onClick={()=>setActiveModule("m4")}
+                                  <button onClick={()=>navigateModule("m4")}
                                     style={{padding:"5px 12px",borderRadius:7,cursor:"pointer",
                                       fontSize:16,fontWeight:600,background:"none",
                                       color:C.m4,border:`1px solid ${C.m4}55`}}>
@@ -2210,7 +2214,16 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
       {activeModule==="m3"&&(
         <div>
           <div style={{background:C.s1,border:`1px solid ${C.m3}22`,borderRadius:12,padding:20,marginBottom:16}}>
-            <h3 style={{margin:"0 0 8px",fontSize:20,color:C.m3,fontWeight:800}}>③ 题组训练 — 35组，构建方法体系</h3>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              {moduleNavStack.length>0&&(
+                <button onClick={navBack}
+                  style={{padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:15,
+                    background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
+                  ← 返回
+                </button>
+              )}
+              <h3 style={{margin:0,fontSize:20,color:C.m3,fontWeight:800}}>③ 题组训练 — 50组，构建方法体系</h3>
+            </div>
             <p style={{margin:0,fontSize:17,color:C.muted,lineHeight:1.8}}>
               每组题目考察知识点间的关联，构建完整方法体系。做错了可直接跳转②基础习题补差。
             </p>
@@ -2311,7 +2324,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                         borderLeft:`3px solid ${c}`,marginBottom:10}}>
                         <p style={{margin:0,fontSize:17,color:C.text,lineHeight:1.9}}>{q.content}</p>
                       </div>
-                      <GeoFigure content={q.content} topicIds={tg.topics}/>
+                      <GeoFigure content={q.content} topicIds={tg.topics} questionId={`tg_${tg.id}_${i}`} questionType="group"/>
 
                       {/* 详细解析 */}
                       {isOpen&&(
@@ -2368,7 +2381,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                   const tc=DOM[TOPIC_MAP[tid]?.domain]?.color||C.m2;
                                   return(
                                     <button key={tid}
-                                      onClick={()=>{setActiveModule("m2");setSelTopic(tid);}}
+                                      onClick={()=>navigateModule("m2",{topic:tid})}
                                       style={{padding:"5px 14px",borderRadius:8,cursor:"pointer",
                                         fontSize:15,fontWeight:700,background:tc,
                                         color:"white",border:"none"}}>
@@ -2376,12 +2389,37 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                     </button>
                                   );
                                 })}
-                                <button onClick={()=>{setActiveModule("m1");setExpandedTopic(tg.topics[0]);}}
+                                <button onClick={()=>navigateModule("m1",{topic:tg.topics[0]})}
                                   style={{padding:"5px 14px",borderRadius:8,cursor:"pointer",
                                     fontSize:15,background:"none",color:C.m1,
                                     border:`1px solid ${C.m1}44`}}>
                                   ① 基础知识讲解
                                 </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 做对了 → 向上挑战压轴题（仅展开解析后显示）*/}
+                          {isOpen&&!isW&&FINAL_GROUPS.filter(fg=>
+                            (fg.topics||[]).some(tid=>tg.topics.includes(tid))
+                          ).length>0&&(
+                            <div style={{padding:"12px 14px",background:C.m4+"0d",
+                              border:`1px solid ${C.m4}25`,borderRadius:8,marginTop:10}}>
+                              <div style={{fontSize:15,color:C.m4,fontWeight:700,marginBottom:8}}>
+                                ↑ 做对了！挑战同类压轴题
+                              </div>
+                              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                                {FINAL_GROUPS.filter(fg=>
+                                  (fg.topics||[]).some(tid=>tg.topics.includes(tid))
+                                ).slice(0,3).map(fg=>(
+                                  <button key={fg.id}
+                                    onClick={()=>navigateModule("m4",{final:fg.id})}
+                                    style={{padding:"5px 14px",borderRadius:8,cursor:"pointer",
+                                      fontSize:15,fontWeight:700,background:C.m4,
+                                      color:"white",border:"none"}}>
+                                    ④ {fg.name}
+                                  </button>
+                                ))}
                               </div>
                             </div>
                           )}
@@ -2407,7 +2445,16 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
       {activeModule==="m4"&&(
         <div>
           <div style={{background:C.s1,border:`1px solid ${C.m4}22`,borderRadius:12,padding:20,marginBottom:16}}>
-            <h3 style={{margin:"0 0 8px",fontSize:20,color:C.m4,fontWeight:800}}>④ 压轴题组 — 20组，催生解题灵感</h3>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              {moduleNavStack.length>0&&(
+                <button onClick={navBack}
+                  style={{padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:15,
+                    background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
+                  ← 返回
+                </button>
+              )}
+              <h3 style={{margin:0,fontSize:20,color:C.m4,fontWeight:800}}>④ 压轴题组 — 30组，催生解题灵感</h3>
+            </div>
             <p style={{margin:0,fontSize:17,color:C.muted,lineHeight:1.8}}>
               综合运用多个知识点和方法。做错了可向下跳转③题组训练或②基础习题追因。
             </p>
@@ -2502,7 +2549,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                         borderLeft:`3px solid ${C.m4}`,marginBottom:10}}>
                         <p style={{margin:0,fontSize:17,color:C.text,lineHeight:1.9}}>{q.content}</p>
                       </div>
-                      <GeoFigure content={q.content} topicIds={fg.topics||[]}/>
+                      <GeoFigure content={q.content} topicIds={fg.topics||[]} questionId={`fg_${fg.id}_${i}`} questionType="final"/>
 
                       {/* 详细解析 */}
                       {isOpen&&(
@@ -2558,7 +2605,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                   (fg.topics||[]).some(tid=>tg.topics.includes(tid))
                                 ).slice(0,3).map(tg=>(
                                   <button key={tg.id}
-                                    onClick={()=>{setActiveModule("m3");setSelGroup(tg.id);}}
+                                    onClick={()=>navigateModule("m3",{group:tg.id})}
                                     style={{padding:"5px 14px",borderRadius:8,cursor:"pointer",
                                       fontSize:15,fontWeight:700,background:C.m3,
                                       color:"white",border:"none"}}>
@@ -2572,7 +2619,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                   const tc=DOM[TOPIC_MAP[tid]?.domain]?.color||C.m2;
                                   return(
                                     <button key={tid}
-                                      onClick={()=>{setActiveModule("m2");setSelTopic(tid);}}
+                                      onClick={()=>navigateModule("m2",{topic:tid})}
                                       style={{padding:"5px 14px",borderRadius:8,cursor:"pointer",
                                         fontSize:15,background:"none",color:tc,
                                         border:`1px solid ${tc}44`}}>
@@ -7243,6 +7290,16 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
     setLoading(false);
   };
 
+  // 如果有API Key且无缓存，自动触发生成
+  useEffect(()=>{
+    if(!svg && !loading && !err && window.__SHUMAI_API &&
+       (window.__SHUMAI_DSKEY || window.__SHUMAI_DBKEY)){
+      // 延迟500ms避免同时大量请求
+      const timer = setTimeout(()=>generate(), 500);
+      return ()=>clearTimeout(timer);
+    }
+  },[svg, loading, err]);
+
   if(svg) return(
     <div style={{marginTop:8,marginBottom:8}}>
       <div dangerouslySetInnerHTML={{__html:svg}}
@@ -7266,14 +7323,20 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
 
   return(
     <div style={{marginTop:6,marginBottom:6}}>
-      <button onClick={generate} disabled={loading}
-        style={{padding:"4px 14px",borderRadius:6,cursor:"pointer",fontSize:14,
-          background:err?C.red+"18":C.geo+"18",
-          color:err?C.red:C.geo,
-          border:`1px solid ${err?C.red+"33":C.geo+"33"}`,
-          opacity:loading?0.7:1}}>
-        {loading?"⏳ AI生成图形中…":err?"⚠️ 生成失败，重试":"🖼️ AI生成示意图"}
-      </button>
+      {loading?(
+        <div style={{fontSize:13,color:C.geo,padding:"4px 0"}}>
+          ⏳ AI 生成示意图中…
+        </div>
+      ):(
+        <button onClick={generate} disabled={loading}
+          style={{padding:"4px 14px",borderRadius:6,cursor:"pointer",fontSize:14,
+            background:err?C.red+"18":C.geo+"18",
+            color:err?C.red:C.geo,
+            border:`1px solid ${err?C.red+"33":C.geo+"33"}`,
+            opacity:loading?0.7:1}}>
+          {err?"⚠️ 生成失败，重试":"🖼️ AI生成示意图"}
+        </button>
+      )}
     </div>
   );
 }
@@ -7294,12 +7357,12 @@ function AskTutor({q, topicName, mode="explain"}) {
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR){alert("请使用Chrome浏览器以支持语音输入");return;}
     const r=new SR();
-    r.lang="zh-CN";r.continuous=false;r.interimResults=true;
+    r.lang="zh-CN";r.continuous=false;r.interimResults=false;
     r.onresult=e=>{
-      const t=Array.from(e.results).map(x=>x[0].transcript).join("");
-      setFollowUp(t);
+      const t=Array.from(e.results).filter(x=>x.isFinal).map(x=>x[0].transcript).join("");
+      if(t) setFollowUp(t);
     };
-    r.onerror=()=>setMicOn(false);
+    r.onerror=e=>{setMicOn(false);if(e.error==="not-allowed")alert("请允许麦克风权限后重试");};
     r.onend=()=>setMicOn(false);
     r.start();
     recRef.current=r;
@@ -7419,9 +7482,9 @@ function AIFloat({context}) {
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR){alert("请使用Chrome浏览器以支持语音输入");return;}
     const r=new SR();
-    r.lang="zh-CN";r.continuous=false;r.interimResults=true;
-    r.onresult=e=>{const t=Array.from(e.results).map(x=>x[0].transcript).join("");setInput(t);};
-    r.onerror=()=>setMicOn(false);
+    r.lang="zh-CN";r.continuous=false;r.interimResults=false;
+    r.onresult=e=>{const t=Array.from(e.results).filter(x=>x.isFinal).map(x=>x[0].transcript).join("");if(t)setInput(t);};
+    r.onerror=e=>{setMicOn(false);if(e.error==="not-allowed")alert("请允许麦克风权限后重试");};
     r.onend=()=>setMicOn(false);
     r.start();recRef.current=r;setMicOn(true);
   };
