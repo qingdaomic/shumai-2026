@@ -7870,7 +7870,7 @@ export default function App() {
   useEffect(()=>{ saveStorage({mastered:[...mastered]}); },[mastered]);
   useEffect(()=>{ saveStorage({wrongSet:[...wrongSet]}); },[wrongSet]);
   useEffect(()=>{ saveStorage({basicWrongSet:[...basicWrongSet]}); },[basicWrongSet]);
-  useEffect(()=>{ saveStorage({lastView:view}); },[view]);
+  useEffect(()=>{ if(view!=="admin") saveStorage({lastView:view}); },[view]);
 
   // AI 模型选择（从 localStorage 恢复上次的选择和 Key）
   const [aiModel,setAiModel]=useState(_saved.aiModel||"deepseek-chat");
@@ -8045,28 +8045,6 @@ export default function App() {
           {!bp.isMobile&&<span style={{fontSize:14,color:C.muted,fontWeight:400}}>ShuMai</span>}
         </div>
         {!bp.isMobile&&<div style={{width:1,height:22,background:C.border,flexShrink:0}}/>}
-
-        {/* 用户头像+昵称（登录后显示） */}
-        {authUser&&authUser.nickname&&(
-          <div onClick={()=>setEditingNickname(true)}
-            title="点击修改昵称"
-            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
-              padding:"3px 8px 3px 3px",borderRadius:20,
-              background:C.s2,border:`1px solid ${C.border}`,
-              flexShrink:0,transition:"all .15s"}}>
-            <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,
-              background:C.alg,color:"white",fontSize:14,fontWeight:800,
-              display:"flex",alignItems:"center",justifyContent:"center"}}>
-              {authUser.nickname.charAt(0)}
-            </div>
-            {!bp.isMobile&&(
-              <span style={{fontSize:14,color:C.text,maxWidth:72,
-                overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                {authUser.nickname}
-              </span>
-            )}
-          </div>
-        )}
 
         <nav style={{display:"flex",gap:2,overflowX:"auto",flex:1,scrollbarWidth:"none",
           ...(bp.isMobile?{display:"none"}:{})}}>
