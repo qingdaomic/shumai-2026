@@ -7385,7 +7385,6 @@ function AuthModal({onClose, onLogin}) {
   const [phone,setPhone]=useState("");
   const [password,setPassword]=useState("");
   const [nickname,setNickname]=useState("");
-  const [inviteCode,setInviteCode]=useState("");
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState("");
 
@@ -7393,13 +7392,12 @@ function AuthModal({onClose, onLogin}) {
     setErr("");
     if(!phone.trim()||!password.trim()){setErr("手机号和密码必填");return;}
     if(tab==="register"&&password.length<6){setErr("密码至少6位");return;}
-    if(tab==="register"&&!inviteCode.trim()){setErr("邀请码必填");return;}
     setLoading(true);
     try{
       const url=`${BACKEND_URL}/api/auth/${tab==="login"?"login":"register"}`;
       const body=tab==="login"
         ?{phone:phone.trim(),password}
-        :{phone:phone.trim(),password,nickname:nickname.trim()||"同学",inviteCode:inviteCode.trim()};
+        :{phone:phone.trim(),password,nickname:nickname.trim()||"\u540c\u5b66"};
       const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
       if(!r.ok){setErr(d.error||"操作失败");setLoading(false);return;}
@@ -7438,13 +7436,6 @@ function AuthModal({onClose, onLogin}) {
 
         {/* 表单 */}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {tab==="register"&&(
-            <input value={inviteCode} onChange={e=>setInviteCode(e.target.value)}
-              placeholder="邀请码（必填）"
-              style={{padding:"11px 14px",borderRadius:8,fontSize:15,
-                background:C.s2,border:`1px solid ${C.border}`,
-                color:C.text,outline:"none"}}/>
-          )}
           <input value={phone} onChange={e=>setPhone(e.target.value)}
             placeholder="手机号" type="tel" inputMode="numeric"
             style={{padding:"11px 14px",borderRadius:8,fontSize:15,
@@ -7490,7 +7481,7 @@ function AuthModal({onClose, onLogin}) {
 
         {tab==="register"&&(
           <div style={{marginTop:12,fontSize:12,color:C.dim,textAlign:"center",lineHeight:1.6}}>
-            注册即同意服务条款 · 邀请码请联系管理员获取
+            注册即同意服务条款
           </div>
         )}
       </div>
