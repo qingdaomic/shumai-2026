@@ -7380,11 +7380,50 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
 ════════════════════════════════════════════════════════════ */
 const BACKEND_URL = "https://shumai-2026-production.up.railway.app";
 
+/* 昵称编辑弹窗 */
+function NicknameEditModal({current, onSave, onClose}) {
+  const [val,setVal]=useState(current||"");
+  return(
+    <>
+      <div onClick={onClose}
+        style={{position:"fixed",inset:0,zIndex:399,background:"rgba(0,0,0,.55)"}}/>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",
+        zIndex:400,background:C.s1,border:`1px solid ${C.border}`,
+        borderRadius:14,padding:"22px 22px 18px",width:280,
+        boxShadow:"0 12px 40px #000c"}}>
+        <div style={{fontSize:16,fontWeight:800,color:C.text,marginBottom:14}}>修改昵称</div>
+        <input value={val} onChange={e=>setVal(e.target.value)}
+          autoFocus
+          onKeyDown={e=>e.key==="Enter"&&val.trim()&&onSave(val.trim())}
+          placeholder="输入新昵称"
+          style={{width:"100%",padding:"10px 14px",borderRadius:8,fontSize:15,
+            background:C.s2,border:`1px solid ${C.border}`,
+            color:C.text,outline:"none",marginBottom:12}}/>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>val.trim()&&onSave(val.trim())}
+            disabled={!val.trim()}
+            style={{flex:1,padding:"9px",borderRadius:8,cursor:"pointer",fontSize:15,
+              fontWeight:700,border:"none",background:C.alg,color:"white",
+              opacity:val.trim()?1:0.5}}>
+            保存
+          </button>
+          <button onClick={onClose}
+            style={{flex:1,padding:"9px",borderRadius:8,cursor:"pointer",fontSize:15,
+              background:"none",color:C.muted,border:`1px solid ${C.border}`}}>
+            取消
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function AuthModal({onClose, onLogin}) {
   const [tab,setTab]=useState("login");
   const [phone,setPhone]=useState("");
   const [password,setPassword]=useState("");
   const [nickname,setNickname]=useState("");
+  const [showPwd,setShowPwd]=useState(false);
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState("");
 
@@ -7441,13 +7480,20 @@ function AuthModal({onClose, onLogin}) {
             style={{padding:"11px 14px",borderRadius:8,fontSize:15,
               background:C.s2,border:`1px solid ${C.border}`,
               color:C.text,outline:"none"}}/>
-          <input value={password} onChange={e=>setPassword(e.target.value)}
-            placeholder={tab==="register"?"密码（至少6位）":"密码"}
-            type="password"
-            onKeyDown={e=>e.key==="Enter"&&submit()}
-            style={{padding:"11px 14px",borderRadius:8,fontSize:15,
-              background:C.s2,border:`1px solid ${C.border}`,
-              color:C.text,outline:"none"}}/>
+          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+            <input value={password} onChange={e=>setPassword(e.target.value)}
+              placeholder={tab==="register"?"密码（至少6位）":"密码"}
+              type={showPwd?"text":"password"}
+              onKeyDown={e=>e.key==="Enter"&&submit()}
+              style={{width:"100%",padding:"11px 44px 11px 14px",borderRadius:8,fontSize:15,
+                background:C.s2,border:`1px solid ${C.border}`,
+                color:C.text,outline:"none"}}/>
+            <button onClick={()=>setShowPwd(v=>!v)} type="button"
+              style={{position:"absolute",right:10,background:"none",border:"none",
+                cursor:"pointer",fontSize:16,color:C.muted,padding:4,lineHeight:1}}>
+              {showPwd?"🙈":"👁"}
+            </button>
+          </div>
           {tab==="register"&&(
             <input value={nickname} onChange={e=>setNickname(e.target.value)}
               placeholder="昵称（选填）"
@@ -7847,6 +7893,7 @@ export default function App() {
   });
   const [authToken,setAuthToken]=useState(()=>localStorage.getItem("shumai_auth_token")||"");
   const [showAuth,setShowAuth]=useState(false);
+  const [editingNickname,setEditingNickname]=useState(false);
   const handleLogin=(user,token)=>{
     setAuthUser(user);
     setAuthToken(token);
@@ -7862,6 +7909,21 @@ export default function App() {
       localStorage.removeItem("shumai_auth_user");
       localStorage.removeItem("shumai_auth_token");
     }catch{}
+  };
+  const saveNickname=async(name)=>{
+    const updated={...authUser,nickname:name};
+    setAuthUser(updated);
+    try{localStorage.setItem("shumai_auth_user",JSON.stringify(updated));}catch{}
+    setEditingNickname(false);
+    if(authToken){
+      try{
+        await fetch(`${BACKEND_URL}/api/auth/profile`,{
+          method:"PUT",
+          headers:{"Content-Type":"application/json","Authorization":`Bearer ${authToken}`},
+          body:JSON.stringify({nickname:name}),
+        });
+      }catch{}
+    }
   };
   const applyTheme=(id)=>{
     if(!THEMES[id])return;
@@ -7983,6 +8045,28 @@ export default function App() {
           {!bp.isMobile&&<span style={{fontSize:14,color:C.muted,fontWeight:400}}>ShuMai</span>}
         </div>
         {!bp.isMobile&&<div style={{width:1,height:22,background:C.border,flexShrink:0}}/>}
+
+        {/* 用户头像+昵称（登录后显示） */}
+        {authUser&&authUser.nickname&&(
+          <div onClick={()=>setEditingNickname(true)}
+            title="点击修改昵称"
+            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+              padding:"3px 8px 3px 3px",borderRadius:20,
+              background:C.s2,border:`1px solid ${C.border}`,
+              flexShrink:0,transition:"all .15s"}}>
+            <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,
+              background:C.alg,color:"white",fontSize:14,fontWeight:800,
+              display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {authUser.nickname.charAt(0)}
+            </div>
+            {!bp.isMobile&&(
+              <span style={{fontSize:14,color:C.text,maxWidth:72,
+                overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                {authUser.nickname}
+              </span>
+            )}
+          </div>
+        )}
 
         <nav style={{display:"flex",gap:2,overflowX:"auto",flex:1,scrollbarWidth:"none",
           ...(bp.isMobile?{display:"none"}:{})}}>
@@ -8197,6 +8281,14 @@ export default function App() {
         <AuthModal
           onClose={()=>setShowAuth(false)}
           onLogin={(user,token)=>{handleLogin(user,token);}}
+        />
+      )}
+      {/* 昵称编辑弹窗 */}
+      {editingNickname&&(
+        <NicknameEditModal
+          current={authUser?.nickname}
+          onSave={saveNickname}
+          onClose={()=>setEditingNickname(false)}
         />
       )}
 

@@ -44,6 +44,21 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// PUT /api/auth/profile — 修改昵称
+router.put('/profile', authMiddleware, async (req, res) => {
+  try {
+    const { nickname } = req.body;
+    if (!nickname?.trim()) return res.status(400).json({ error: '昵称不能为空' });
+    const result = await pool.query(
+      'UPDATE users SET nickname=$1, updated_at=NOW() WHERE id=$2 RETURNING id, phone, nickname, grade',
+      [nickname.trim(), req.user.id]
+    );
+    res.json({ user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 鉴权中间件
 export function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
