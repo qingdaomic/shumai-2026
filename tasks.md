@@ -2,7 +2,7 @@
 
 > 使用说明：每次新对话开始时，AI 先读 `claude.md` → 再读此文件，找到第一个 `[ ]` 未完成任务继续执行。  
 > 用户只需输入"继续"即可推进。每完成一项，将 `[ ]` 改为 `[x]`。  
-> 最后更新：2026-04-30
+> 最后更新：2026-05-04
 
 ---
 
@@ -231,7 +231,7 @@
 - [x] **J3.1** 题库 API 化（后端 `questions.js` 按需返回单题）
 - [x] **J3.2** 未登录用户只显示题目前 3 题预览（顶部提示条 + 底部解锁卡片 → 跳转会员中心）
 - [x] **J3.3** API 限流（30次/分钟/用户，内存 Map + 定时清理）
-- [x] **J3.4** 题目内容防复制（CSS `.q-content` user-select:none）
+https://shumai-2026.netlify.app/?view=admin- [x] **J3.4** 题目内容防复制（CSS `.q-content` user-select:none）
 
 ### F2-F3. 每日任务 + 遗忘曲线
 
@@ -281,6 +281,25 @@
 - [x] **R1.4** 前端 Vite build 部署到 Netlify，后端 API 部署到 Railway
 - [x] **R1.5** 验证：健康检查 `/api/health` ✅
 - [ ] **R1.6** 配置自定义域名（可选，shumai.cn 或子域名）
+
+### A1. 用户认证系统（2026-05-04）
+
+- [x] **A1.1** 注册/登录 Modal（手机号+密码，密码可见性切换 👁）
+- [x] **A1.2** 注册后左上角显示昵称+头像（第一个汉字圆形头像）
+- [x] **A1.3** 昵称可编辑（`NicknameEditModal` + 后端 `PUT /api/auth/profile`）
+- [x] **A1.4** `?view=admin` URL 读后即清理（不持久化到 localStorage，刷新不还原）
+- [x] **A1.5** 侧边栏昵称与认证用户同步（`shumai_nickname` ← `authUser.nickname`）
+- [x] **A1.6** Netlify → Railway API 代理（`netlify.toml` `/api/*` 重定向）
+- [x] **A1.7** `window.__SHUMAI_TOKEN` 全局 token（启动读 localStorage，登录后写）
+- [x] **A1.8** 后台 admin 权限支持 `ADMIN_PHONE` 环境变量（Railway 配置）
+
+### B1. Bug 修复（2026-05-04）
+
+- [x] **B1.1** M2 基础习题错题角标错误计数 → 仅统计 `BASICS_BY_TOPIC[t.id]` 直接拥有的题目，不跨父级共享
+- [x] **B1.2** M3 题组 / M4 压轴做错题未累加左侧进度 → 同步调用 `addBasicWrong`
+- [x] **B1.3** M3/M4 错题刷新后消失 → `m3WrongSet`/`m4WrongSet` 从 `basicWrongSet` 懒初始化恢复
+- [x] **B1.4** 错题本显示为空 → 新增 `lookupBasicQ()` 工具函数，错题本统一显示真题+基础+题组+压轴
+- [x] **B1.5** 真题刷题登录后仍锁定 → 修正 `window.__SHUMAI_TOKEN__`（多余下划线）→ `window.__SHUMAI_TOKEN`
 
 ### Q1. 题库扩充（目标：1500 道精品题）
 
@@ -334,6 +353,10 @@
   · `server/api/subscription.js`：free/VIP/Pro套餐定义 + 订阅状态 + 开通/续费 + 使用量  
   · `PageVIP`：套餐对比卡片（功能矩阵）+ 时长选择（7折优惠）+ 当前状态展示  
   · 微信ClawBot增强：图片/PDF直接发送 → AI分析试卷（`handleImageMessage`）
+
+### 模块 T：主题切换
+
+- [x] **T2** 深色/浅色/护眼/暖棕四种主题切换（设置面板 + localStorage 持久化 + 全局颜色 mutate）
 
 ### 模块 N：学段扩展
 
@@ -393,3 +416,5 @@
 - [x] 创建 `claude.md`（AI 助手指令）
 - [x] 创建 `.windsurf/system-map.md`（代码行号地图）
 - [x] 题库统计确认：1334 道题（624真题+500基础+137题组+58压轴+15诊断）
+- [x] 用户认证系统完整实现（注册/登录/昵称/头像/后端同步）
+- [x] 5 项错题计数 Bug 修复（2026-05-04）

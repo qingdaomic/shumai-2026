@@ -1,7 +1,7 @@
 # 数脉 ShuMai — AI 助手指令
 
 > 本文件供 AI 助手（Claude/Windsurf/Cursor 等）在每次对话开始时自动读取，快速恢复项目上下文。  
-> 最后更新：2026-05-01
+> 最后更新：2026-05-04
 
 ---
 
@@ -45,7 +45,7 @@
 
 | 文件 | 用途 |
 |------|------|
-| `src/App.jsx` | 所有 UI 组件（~7900行），含所有页面组件 |
+| `src/App.jsx` | 所有 UI 组件（~8500行），含所有页面组件 |
 | `src/data/topics.js` | 194 知识点数据 |
 | `src/data/exam-qs.js` | 624 道真题数据 |
 | `src/data/basics.js` | 基础题 + 题组 + 压轴数据 |
@@ -59,21 +59,23 @@
 | `tasks.md` | 任务看板 |
 | `claude.md` | 本文件，AI 助手指令 |
 | `FEATURES.md` | 产品功能全景文档 |
+| `server/api/auth.js` | 注册/登录/昵称修改 API |
+| `netlify.toml` | Netlify 转发（`/api/*` 代理到 Railway） |
 | `RAILWAY.md` | Railway 部署指南 |
 
 ---
 
-## 数据规模（2026-05-01）
+## 数据规模（2026-05-04）
 
 | 类别 | 数量 |
 |------|------|
 | 知识点（TOPICS） | 194 |
 | 中考真题（EXAM_QS） | 624 |
 | 基础题（BASICS_BY_TOPIC） | 500 |
-| 题组训练（TOPIC_GROUPS） | 35 |
-| 压轴组（FINAL_GROUPS） | 20 |
+| 题组训练（TOPIC_GROUPS） | 50 |
+| 压轴组（FINAL_GROUPS） | 30 |
 | 诊断题（DiagQuickTest） | 15 |
-| **题目总计** | **1194** |
+| **题目总计** | **1334** |
 
 ---
 
@@ -98,8 +100,8 @@
 ### 数据 ID 规则
 - EXAM_QS：数字 id（0-623）
 - BASICS：字符串 `b_xxx_nn`（如 `b_rat_04`）
-- TOPIC_GROUPS：字符串 `tgNN`（如 `tg15`）
-- FINAL_GROUPS：字符串 `fgNN`（如 `fg08`）
+- TOPIC_GROUPS 题 ID：`tgNN_i`（如 `tg01_0`）——`lookupBasicQ(id)` 可查询
+- FINAL_GROUPS 题 ID：`fgNN_i`（如 `fg08_0`）——同上
 - 知识点 topic code：英文小写（如 `rational`, `quad_fn`, `circle`）
 
 ### 学期编码
@@ -108,7 +110,14 @@
 ### 部署更新流程
 - **改前端**：`npx vite build` → 拖 `dist/` 到 Netlify
 - **改后端**：`git push` → Railway 自动部署
-- **URL 参数路由**：`?view=admin/teacher/parent/vip` 跳转管理页面
+- **URL 参数路由**：`?view=admin/teacher/parent/vip` 跳转管理页面（不持久化，读后清理）
+- **API 代理**：Netlify `/api/*` → Railway `https://shumai-2026-production.up.railway.app/api/*`
+
+### 用户认证
+- `window.__SHUMAI_TOKEN` 全局 token（单下划线，切勿写成 `__SHUMAI_TOKEN__`）
+- `authUser` 对象包含 `{id, phone, nickname, grade, role}`
+- localStorage 键：`shumai_auth_token`、`shumai_auth_user`、`shumai_nickname`
+- admin 访问：DB `role='admin'` 或 `ADMIN_PHONE` 环境变量（逗号分隔多个）
 
 ---
 
@@ -127,46 +136,34 @@
 ### ✅ 已完成（全部）
 
 **基础设施：**
-- **S1 文件拆分 ✅**：8 个文件（6 数据 + App.jsx + main.jsx），Vite build 通过
-- **S2 PWA ✅**：manifest.json + SW + 移动端触摸/安全区/滚动优化
-- **S3 后端 ✅**：Express 服务器 + 5 张表 + 认证/题库/进度/微信 API
-- **R1 Railway 部署 ✅**：后端+PostgreSQL 在线运行，健康检查通过
+- **S1 文件拆分 ✅** / **S2 PWA ✅** / **S3 后端 ✅** / **R1 Railway 部署 ✅**
 
 **核心功能：**
-- **W1 ClawBot ✅**：bot.js 完整实现（登录/轮询/绑定/AI对话/定时推送/指令）
-- **W1.6 智能互动推送 ✅**：遗忘曲线提醒 + 考前倒计时 + 薄弱点提醒
-- **G1 全面AI化 ✅**：后端5接口 + RTF提示词6场景 + 前端AskTutor组件 + AIFloat全局浮窗
-- **P1 试卷逆向分析 ✅**：录入→AI拆解→薄弱定位→模拟卷生成
+- **W1 ClawBot ✅** / **G1 全面AI化 ✅** / **P1 试卷逆向 ✅**
+- **F2-F3 每日任务+遗忘曲线 ✅** / **I1 考前冲刺 ✅**
+- **H1-H4 激励可视化 ✅** / **J3 防盗版 ✅** / **T1 定时任务 ✅**
+- **M1-M3 高级AI ✅** / **D1-D6 管理端 ✅** / **K1-K5 教师端 ✅**
+- **L1-L4 家长端 ✅** / **E1-E6 收费体系 ✅** / **W2 OCR ✅**
+- **U1.1-U1.6 UI重构 ✅**：手机 Tab栏 / Pad侧边栏 / 桌面侧边栏 / PageMe
+- **Q1.1-Q1.5 题库扩充 ✅**：50组题组 + 30组压轴 + sol润色
+- **T2 主题切换 ✅**：深色/浅色/护眼/暖棕四种
 
-**增强功能：**
-- **F2-F3 每日任务+遗忘曲线 ✅**
-- **H1-H4 激励可视化 ✅**：XP + 打卡 + 雷达图 + 方法卡
-- **J3 防盗版 ✅**
-- **T1 定时任务 ✅**
-- **I1 考前冲刺 ✅**
-- **M1-M3 高级AI ✅**：拍题搜题 + 变形题 + 错误模式分析
-- **D1-D6 管理端 ✅**
-- **K1-K5 教师端 ✅**
-- **L1-L4 家长端 ✅**
-- **E1-E6 收费体系 ✅**
-- **W2 OCR作业识别 ✅**
-- **H3 分数预测曲线 ✅**
+**用户认证（A1 系列）✅：**
+- 手机号注册/登录，密码可见性切换
+- 注册后显示昵称头像，昵称可编辑（后端 `PUT /api/auth/profile`）
+- `?view=admin` 读后清理 URL，不持久化
+- `ADMIN_PHONE` 环境变量支持备用 admin 账号
+- Netlify `/api/*` 代理到 Railway
 
-**UI 重构（U1 系列）：**
-- **U1.1 导航栏精简 ✅**：移除教师端/家长端/会员/后台入口
-- **U1.2 手机端底部 Tab 栏 ✅**：5Tab（首页/学习/练题/错题/我的）
-- **U1.3 PageMe 个人中心 ✅**：头像/昵称/学情/工具/设置
-- **U1.4 Pad 端图标侧边栏 ✅**：44px 收起 / hover 展开 / badge
-- **U1.5 桌面端侧边栏重构 ✅**：用户卡片/立即行动/倒计时/进度/薄弱点/工具
-- **U1.6 首页布局调整 ✅**：数据总览横排 + 快速入口横排 + 能力雷达优化
+**Bug 修复（B1 系列）✅：**
+- M2 错题角标错误计数（父级共享问题）
+- M3/M4 错题刷新后消失（懒初始化修复）
+- 错题本显示为空（新增 `lookupBasicQ()` ）
+- 真题登录后仍锁定（`__SHUMAI_TOKEN__` 拼写 bug）
 
 ### 🔥 下一步
 
-- [ ] **Q1** 题库扩充（1194→1500道）
-- [ ] 主题切换（深色/浅色/暖色）
 - [ ] **C1** 腾讯云备案（并行进行）
-
-### 🎬 V2 规划
-
 - [ ] **V1** AI 知识点讲解视频（DeepSeek + HyperFrames）
-- [ ] **V2** 个性化学习计划模块（PagePlan，参考 Khan Academy）
+- [ ] **V2** 个性化学习计划模块（PagePlan）
+

@@ -14,7 +14,7 @@
 
 **技术栈**：
 - 前端：React 18 + Vite 5，部署 Netlify
-- 后端：Node.js + Express + PostgreSQL（搭建中）
+- 后端：Node.js + Express + PostgreSQL，部署 Railway ✅
 - 微信：ClawBot（腾讯官方 iLink 协议）
 - AI：DeepSeek API
 
@@ -26,12 +26,12 @@
 
 | 阶段 | 目标 | 状态 |
 |------|------|------|
-| V1 | 前端原型：知识图谱 + 题库 + 诊断 | ✅ 已完成 |
-| V1.2 | 文件拆分 + PWA + AI 讲解按钮 | 🔥 进行中 |
-| V1.5 | 后端 + ClawBot 微信 + 题库 API | ⬚ 计划中 |
-| V2 | 管理端 + 教师端 + 家长端 | ⬚ 计划中 |
-| V2.5 | 高级 AI：OCR 作业分析 + 试卷逆向 | ⬚ 计划中 |
-| V3 | 商业化：收费体系 + 学段扩展 | ⬚ 计划中 |
+| V1 | 前端原型：知识图谱 + 题库 + 诊断 |  已完成 |
+| V1.2 | 文件拆分 + PWA + AI 讲解按钮 |  已完成 |
+| V1.5 | 后端 + ClawBot 微信 + 题库 API |  已完成 |
+| V2 | 管理端 + 教师端 + 家长端 + 用户认证 |  已完成 |
+| V2.5 | 高级 AI：OCR 作业分析 + 试卷逆向 |  已完成 |
+| V3 | 商业化：收费体系 + 学段扩展 | 进行中 |
 
 完整规划详见 `tasks.md` 和 `文档/roadmap.md`。
 
@@ -45,9 +45,10 @@
 | 基础习题 | 500 道 |
 | 核心知识点 | 24 个 |
 | 解题方法 | 23 种 |
-| 题组训练 | 35 组 |
-| 压轴题组 | 10 组 |
+| 题组训练 | 50 组 |
+| 压轴题组 | 30 组 |
 | 晨读卡 | 24 个 |
+| **题目总计** | **1334 道** |
 
 ---
 
@@ -74,7 +75,7 @@
   - 支持错题收录与错题本联动
 
 - **错题本**
-  - 自动按知识点分组
+  - 自动按知识点分组（真题 + 基础 + 题组 + 压轴全类型）
   - 展示错因追溯和补差路径
   - 支持语音讲解文稿生成与朗读
 
@@ -93,6 +94,11 @@
   - 基于 `MORNING_DATA` 构造知识点晨读内容
   - 支持卡片式记忆和结果记录
 
+- **用户认证**
+  - 手机号+密码注册/登录，密码可见性切换
+  - 登录后展示昵称头像（第一个汉字圆形头像），昵称可编辑
+  - 后端 JWT 鉴权，登录状态全居持久化
+
 - **本地持久化**
   - 使用 `localStorage` 保存掌握状态、错题、基础错题、AI 设置等
 
@@ -102,19 +108,20 @@
 
 ### 关键源文件
 
-- **`shumai-v7-1.jsx`**
-  - 主源码文件
-  - 包含设计系统、数据集、工具函数、页面组件和根组件
-
-- **`shumai-v7-1.html`**
-  - 由 `shumai-v7-1.jsx` 编译得到的单文件运行版本
-  - 可直接双击打开，不依赖任何环境
-
-- **`README.md`**
-  - 项目使用与维护说明（本文件）
+- **`src/App.jsx`**（主源码 ~8500 行，纯 UI + 逻辑）
+- **`src/data/topics.js`** — 194 知识点
+- **`src/data/exam-qs.js`** — 624 道真题
+- **`src/data/basics.js`** — 基础题 + TOPIC_GROUPS(50组) + FINAL_GROUPS(30组)
+- **`src/data/graph.js`** — 知识点依赖图 + TOPIC_MAP
+- **`src/data/constants.js`** — 色板 / 方法 / 常量
+- **`src/data/diag.js`** — 15 道诊断题
+- **`server/index.js`** — Express 主入口
+- **`server/api/auth.js`** — 注册/登录/昵称修改 API
+- **`server/schema.sql`** — 数据库表结构
+- **`netlify.toml`** — Netlify 重定向（`/api/*` 代理到 Railway）
 
 - **`design.md`**
-  - 当前单文件版本的系统架构、设计思想、数据流和页面设计文档
+  - 系统架构、设计思想、数据流和页面设计文档
 
 ### 文档目录 `文档/`
 
@@ -288,15 +295,15 @@
 根组件通过 `localStorage` 管理以下状态：
 
 - `mastered`
-- `wrongSet`
-- `basicWrongSet`
-- `aiModel`
-- `dsKey`
-- `dbKey`
+- `wrongSet`（真题错题）
+- `basicWrongSet`（基础/题组/压轴错题）
+- `aiModel`, `dsKey`, `dbKey`
+- `authUser`, `authToken`（登录状态）
 
 存储键：
 
-- `shumai_v7`
+- `shumai_v7`（主状态）
+- `shumai_auth_user`、`shumai_auth_token`、`shumai_nickname`（认证）
 
 保存方式：
 
@@ -361,28 +368,19 @@
 
 ## 运行方式
 
-### 方式一：直接打开离线版
+### 本地开发
 
-直接双击：
+```bash
+npm install
+npm run dev      # 启动开发服务器
+npx vite build   # 构建 dist/
+```
 
-- `index.html`
+### 应用部署
 
-适合：
-
-- 本地演示
-- 非开发环境使用
-- 快速验收 UI 和页面逻辑
-
-### 方式二：作为 React JSX 源码维护
-
-源码主文件：
-
-- `shumai-v7-1.jsx`
-
-说明：
-
-- 这是 React JSX 文件，不是浏览器可直接执行的原始格式
-- 若要继续开发，通常需要 React 构建环境进行编译或打包
+- **前端**：拖拽 `dist/` 到 Netlify
+- **后端**：`git push` 到 main 分支，Railway 自动部署
+- **管理入口**：https://shumai-2026.netlify.app/?view=admin
 
 ---
 
