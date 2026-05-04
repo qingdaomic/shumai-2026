@@ -7829,11 +7829,11 @@ export default function App() {
     const p=params.get("view");
     if(p){
       history.replaceState(null,"",window.location.pathname);
-      if(p!=="admin") return p;
+      return p; // URL 参数允许所有 view（含 admin），但 URL 会被立即清除，刷新不还原
     }
     try{
       const lv=JSON.parse(localStorage.getItem("shumai_v7")||"{}").lastView||"home";
-      return lv==="admin"?"home":lv;
+      return lv==="admin"?"home":lv; // 刷新时不从 localStorage 恢复 admin
     }catch{ return "home"; }
   });
   const [detailId,setDetailId]=useState(null);
