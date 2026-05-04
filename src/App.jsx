@@ -1545,7 +1545,12 @@ function PageGraph({mastered,onNav}) {
 ════════════════════════════════════════════════════════════ */
 function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet=new Set(),addBasicWrong=()=>{},removeBasicWrong=()=>{}}) {
   const {isMobile}=useBP();
-  const [activeModule,setActiveModule]=useState("m1");
+  const [activeModule,setActiveModule]=useState(()=>{
+    try{ return JSON.parse(localStorage.getItem("shumai_v7")||"{}").activeModule||"m1"; }catch{ return "m1"; }
+  });
+  useEffect(()=>{
+    try{ const s=JSON.parse(localStorage.getItem("shumai_v7")||"{}"); localStorage.setItem("shumai_v7",JSON.stringify({...s,activeModule})); }catch{}
+  },[activeModule]);
   const [selTopic,setSelTopic]=useState(null);
   const [expandedTopic,setExpandedTopic]=useState(null);
   const [openQ,setOpenQ]=useState(null);
@@ -2324,7 +2329,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                         borderLeft:`3px solid ${c}`,marginBottom:10}}>
                         <p style={{margin:0,fontSize:17,color:C.text,lineHeight:1.9}}>{q.content}</p>
                       </div>
-                      <GeoFigure content={q.content} topicIds={tg.topics} questionId={`tg_${tg.id}_${i}`} questionType="group"/>
+                      <GeoFigure key={`tg_${tg.id}_${i}`} content={q.content} topicIds={tg.topics} questionId={`tg_${tg.id}_${i}`} questionType="group"/>
 
                       {/* 详细解析 */}
                       {isOpen&&(
@@ -2549,7 +2554,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                         borderLeft:`3px solid ${C.m4}`,marginBottom:10}}>
                         <p style={{margin:0,fontSize:17,color:C.text,lineHeight:1.9}}>{q.content}</p>
                       </div>
-                      <GeoFigure content={q.content} topicIds={fg.topics||[]} questionId={`fg_${fg.id}_${i}`} questionType="final"/>
+                      <GeoFigure key={`fg_${fg.id}_${i}`} content={q.content} topicIds={fg.topics||[]} questionId={`fg_${fg.id}_${i}`} questionType="final"/>
 
                       {/* 详细解析 */}
                       {isOpen&&(
@@ -7242,18 +7247,18 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
   const API=window.__SHUMAI_API||"";
 
   const needsFigure=topicIds.some(t=>GEO_TOPIC_IDS.has(t))||GEO_KW.test(content);
-  if(!needsFigure) return null;
+  // ⚠️ 不能在 useEffect 之前 return（违反 React Hooks 规则），移到所有 Hook 之后
 
   // 自动读取缓存
   useEffect(()=>{
-    if(!questionId||svg) return;
+    if(!needsFigure||!questionId||svg) return;
     fetch(`${API}/api/svg/${encodeURIComponent(questionId)}`)
       .then(r=>r.json())
       .then(d=>{
         if(d.exists&&d.svg){ setSvg(d.svg); setFromCache(true); }
       })
       .catch(()=>{});
-  },[questionId]);
+  },[questionId,needsFigure]);
 
   const saveSvg=async(svgStr)=>{
     if(!questionId||!API) return;
@@ -7292,13 +7297,16 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
 
   // 如果有API Key且无缓存，自动触发生成
   useEffect(()=>{
+    if(!needsFigure) return;
     if(!svg && !loading && !err && window.__SHUMAI_API &&
        (window.__SHUMAI_DSKEY || window.__SHUMAI_DBKEY)){
       // 延迟500ms避免同时大量请求
       const timer = setTimeout(()=>generate(), 500);
       return ()=>clearTimeout(timer);
     }
-  },[svg, loading, err]);
+  },[svg, loading, err, needsFigure]);
+
+  if(!needsFigure) return null; // 所有 Hook 已调用，可以安全提前返回
 
   if(svg) return(
     <div style={{marginTop:8,marginBottom:8}}>
@@ -7635,7 +7643,8 @@ function AIFloat({context}) {
 export default function App() {
   const [view,setView]=useState(()=>{
     const p=new URLSearchParams(window.location.search).get("view");
-    return p||"home";
+    if(p) return p;
+    try{ return JSON.parse(localStorage.getItem("shumai_v7")||"{}").lastView||"home"; }catch{ return "home"; }
   });
   const [detailId,setDetailId]=useState(null);
   const bp = useWindowSize();
@@ -7678,6 +7687,7 @@ export default function App() {
   useEffect(()=>{ saveStorage({mastered:[...mastered]}); },[mastered]);
   useEffect(()=>{ saveStorage({wrongSet:[...wrongSet]}); },[wrongSet]);
   useEffect(()=>{ saveStorage({basicWrongSet:[...basicWrongSet]}); },[basicWrongSet]);
+  useEffect(()=>{ saveStorage({lastView:view}); },[view]);
 
   // AI 模型选择（从 localStorage 恢复上次的选择和 Key）
   const [aiModel,setAiModel]=useState(_saved.aiModel||"deepseek-chat");
