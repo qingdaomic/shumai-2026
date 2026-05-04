@@ -7935,6 +7935,7 @@ export default function App() {
   const [mastered,setMastered]=useState(()=>new Set(_saved.mastered||[]));
   const [wrongSet,setWrongSet]=useState(()=>new Set(_saved.wrongSet||[]));
   const [basicWrongSet,setBasicWrongSet]=useState(()=>new Set(_saved.basicWrongSet||[]));
+  const masteredRef=useRef(mastered);
 
   // ── 首次诊断状态 ──────────────────────────────
   const [diagDone,setDiagDone]=useState(()=>!!_saved.diagDone);
@@ -7948,7 +7949,7 @@ export default function App() {
   };
 
   // 每次状态变化时自动保存
-  useEffect(()=>{ saveStorage({mastered:[...mastered]}); },[mastered]);
+  useEffect(()=>{ saveStorage({mastered:[...mastered]}); masteredRef.current=mastered; },[mastered]);
   useEffect(()=>{ saveStorage({wrongSet:[...wrongSet]}); },[wrongSet]);
   useEffect(()=>{ saveStorage({basicWrongSet:[...basicWrongSet]}); },[basicWrongSet]);
   useEffect(()=>{ if(view!=="admin") saveStorage({lastView:view}); },[view]);
@@ -7979,6 +7980,31 @@ export default function App() {
   });
   const [showAuth,setShowAuth]=useState(false);
   const [editingNickname,setEditingNickname]=useState(false);
+  const authTokenRef=useRef(authToken);
+  useEffect(()=>{authTokenRef.current=authToken;},[authToken]);
+  // ── 云端进度同步 ──────────────────────────────────────────
+  const syncFromCloud=async(token)=>{
+    if(!token)return;
+    try{
+      const h={'Authorization':`Bearer ${token}`};
+      const [pr,wr]=await Promise.all([
+        fetch(`${BACKEND_URL}/api/progress`,{headers:h}),
+        fetch(`${BACKEND_URL}/api/progress/wrong`,{headers:h})
+      ]);
+      if(pr.ok){
+        const rows=await pr.json();
+        const cm=new Set(rows.filter(r=>r.mastered).map(r=>r.topic_id));
+        if(cm.size) setMastered(prev=>new Set([...prev,...cm]));
+      }
+      if(wr.ok){
+        const rows=await wr.json();
+        const ew=new Set(rows.filter(r=>r.question_type==='exam').map(r=>r.question_id));
+        const bw=new Set(rows.filter(r=>r.question_type==='basic').map(r=>r.question_id));
+        if(ew.size) setWrongSet(prev=>new Set([...prev,...ew]));
+        if(bw.size) setBasicWrongSet(prev=>new Set([...prev,...bw]));
+      }
+    }catch{}
+  };
   const handleLogin=(user,token)=>{
     setAuthUser(user);
     setAuthToken(token);
@@ -7990,6 +8016,7 @@ export default function App() {
         localStorage.setItem("shumai_nickname",user.nickname);
       }
     }catch{}
+    syncFromCloud(token);
   };
   const handleLogout=()=>{
     setAuthUser(null);
@@ -8072,13 +8099,32 @@ export default function App() {
     return ()=>window.removeEventListener('shumai-nav',handler);
   },[]);
 
+  const cloudW=(method,url,body)=>{
+    const t=authTokenRef.current;
+    if(!t)return;
+    fetch(`${BACKEND_URL}${url}`,{method,headers:{'Content-Type':'application/json','Authorization':`Bearer ${t}`},...(body?{body:JSON.stringify(body)}:{})}).catch(()=>{});
+  };
   const toggleM=useCallback(id=>{
-    setMastered(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+    const nowM=!masteredRef.current.has(id);
+    setMastered(p=>{const n=new Set(p);nowM?n.add(id):n.delete(id);return n;});
+    cloudW('PUT',`/api/progress/${encodeURIComponent(id)}`,{mastered:nowM,score:nowM?100:0});
   },[]);
-  const addWrong=useCallback(id=>setWrongSet(p=>new Set([...p,id])),[]);
-  const removeWrong=useCallback(id=>setWrongSet(p=>{const n=new Set(p);n.delete(id);return n;}),[]);
-  const addBasicWrong=useCallback(id=>setBasicWrongSet(p=>new Set([...p,id])),[]);
-  const removeBasicWrong=useCallback(id=>setBasicWrongSet(p=>{const n=new Set(p);n.delete(id);return n;}),[]);
+  const addWrong=useCallback(id=>{
+    setWrongSet(p=>new Set([...p,id]));
+    cloudW('POST','/api/progress/wrong',{questionId:String(id),questionType:'exam'});
+  },[]);
+  const removeWrong=useCallback(id=>{
+    setWrongSet(p=>{const n=new Set(p);n.delete(id);return n;});
+    cloudW('DELETE',`/api/progress/wrong/${encodeURIComponent(id)}`);
+  },[]);
+  const addBasicWrong=useCallback(id=>{
+    setBasicWrongSet(p=>new Set([...p,id]));
+    cloudW('POST','/api/progress/wrong',{questionId:id,questionType:'basic'});
+  },[]);
+  const removeBasicWrong=useCallback(id=>{
+    setBasicWrongSet(p=>{const n=new Set(p);n.delete(id);return n;});
+    cloudW('DELETE',`/api/progress/wrong/${encodeURIComponent(id)}`);
+  },[]);
 
   const activeNav=view==="detail"?"modules":view;
 
