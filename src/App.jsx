@@ -7620,24 +7620,33 @@ function AskTutor({q, topicName, mode="explain"}) {
   const [followUp,setFollowUp]=useState("");
   const [history,setHistory]=useState([]);
   const [micOn,setMicOn]=useState(false);
+  const [voiceErr,setVoiceErr]=useState("");
   const recRef=useRef(null);
 
   const startVoice=()=>{
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){alert("请使用Chrome浏览器以支持语音输入");return;}
+    if(!SR){setVoiceErr("浏览器不支持语音输入，请手动输入文字");return;}
+    try{recRef.current?.abort();}catch{}
+    recRef.current=null;
+    setVoiceErr("");
     const r=new SR();
-    r.lang="zh-CN";r.continuous=false;r.interimResults=false;
+    r.lang="zh-CN";r.continuous=false;r.interimResults=true;
     r.onresult=e=>{
-      const t=Array.from(e.results).filter(x=>x.isFinal).map(x=>x[0].transcript).join("");
-      if(t) setFollowUp(t);
+      const seg=e.results[e.results.length-1];
+      const t=seg?.[0]?.transcript||"";
+      if(t.trim()) setFollowUp(t.trim());
     };
-    r.onerror=e=>{setMicOn(false);if(e.error==="not-allowed")alert("请允许麦克风权限后重试");};
-    r.onend=()=>setMicOn(false);
-    r.start();
-    recRef.current=r;
-    setMicOn(true);
+    r.onerror=e=>{
+      setMicOn(false);recRef.current=null;
+      if(e.error==="not-allowed") setVoiceErr("请在浏览器设置中允许麦克风权限");
+      else if(e.error==="no-speech") setVoiceErr("未检测到语音，请重试");
+      else setVoiceErr("语音识别失败，请手动输入");
+    };
+    r.onend=()=>{setMicOn(false);recRef.current=null;};
+    try{r.start();recRef.current=r;setMicOn(true);}
+    catch{setVoiceErr("启动语音失败，请刷新重试");}
   };
-  const stopVoice=()=>{recRef.current?.stop();setMicOn(false);};
+  const stopVoice=()=>{try{recRef.current?.stop();}catch{} recRef.current=null;setMicOn(false);};
 
   const doAsk = async (userMsg) => {
     setLoading(true);
@@ -7723,6 +7732,9 @@ function AskTutor({q, topicName, mode="explain"}) {
                   录音中…说完会自动停止，也可点⏹手动停止
                 </div>
               )}
+              {voiceErr&&(
+                <div style={{marginTop:4,fontSize:12,color:C.red}}>{voiceErr}</div>
+              )}
             </>
           ):null}
         </div>
@@ -7740,21 +7752,35 @@ function AIFloat({context}) {
   const [input,setInput]=useState("");
   const [loading,setLoading]=useState(false);
   const [micOn,setMicOn]=useState(false);
+  const [voiceErr,setVoiceErr]=useState("");
   const scrollRef=useRef(null);
   const recRef=useRef(null);
   const {isMobile}=useBP();
 
   const startVoice=()=>{
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){alert("请使用Chrome浏览器以支持语音输入");return;}
+    if(!SR){setVoiceErr("浏览器不支持语音输入，请手动输入");return;}
+    try{recRef.current?.abort();}catch{}
+    recRef.current=null;
+    setVoiceErr("");
     const r=new SR();
-    r.lang="zh-CN";r.continuous=false;r.interimResults=false;
-    r.onresult=e=>{const t=Array.from(e.results).filter(x=>x.isFinal).map(x=>x[0].transcript).join("");if(t)setInput(t);};
-    r.onerror=e=>{setMicOn(false);if(e.error==="not-allowed")alert("请允许麦克风权限后重试");};
-    r.onend=()=>setMicOn(false);
-    r.start();recRef.current=r;setMicOn(true);
+    r.lang="zh-CN";r.continuous=false;r.interimResults=true;
+    r.onresult=e=>{
+      const seg=e.results[e.results.length-1];
+      const t=seg?.[0]?.transcript||"";
+      if(t.trim()) setInput(t.trim());
+    };
+    r.onerror=e=>{
+      setMicOn(false);recRef.current=null;
+      if(e.error==="not-allowed") setVoiceErr("请允许麦克风权限");
+      else if(e.error==="no-speech") setVoiceErr("未检测到语音，请重试");
+      else setVoiceErr("语音识别失败，请手动输入");
+    };
+    r.onend=()=>{setMicOn(false);recRef.current=null;};
+    try{r.start();recRef.current=r;setMicOn(true);}
+    catch{setVoiceErr("启动语音失败，请刷新重试");}
   };
-  const stopVoice=()=>{recRef.current?.stop();setMicOn(false);};
+  const stopVoice=()=>{try{recRef.current?.stop();}catch{} recRef.current=null;setMicOn(false);};
 
   useEffect(()=>{
     if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
@@ -7862,6 +7888,9 @@ function AIFloat({context}) {
               background:"#ef4444"}}/>
             录音中…说完自动停止
           </div>
+        )}
+        {voiceErr&&(
+          <div style={{fontSize:12,color:C.red,marginBottom:6,paddingLeft:4}}>{voiceErr}</div>
         )}
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <button onClick={micOn?stopVoice:startVoice}
