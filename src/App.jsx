@@ -3153,7 +3153,7 @@ function PagePractice({wrongSet,addWrong,removeWrong}) {
       )}
 
       {/* J3.2 未登录预览提示 */}
-      {!window.__SHUMAI_TOKEN__&&filtered.length>3&&(
+      {!window.__SHUMAI_TOKEN&&filtered.length>3&&(
         <div style={{padding:"10px 16px",borderRadius:10,marginBottom:12,
           background:"#fbbf2415",border:"1px solid #fbbf2444",
           display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -3169,7 +3169,7 @@ function PagePractice({wrongSet,addWrong,removeWrong}) {
       )}
 
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        {(window.__SHUMAI_TOKEN__?filtered:filtered.slice(0,3)).map((q,idx)=>{
+        {(window.__SHUMAI_TOKEN?filtered:filtered.slice(0,3)).map((q,idx)=>{
           const t=TOPIC_MAP[q.topic],c=t?DOM[t.domain].color:C.muted;
           const isW=wrongSet.has(q.id),sol=openSol===q.id;
           const subTs=(q.subTopics||[]).map(id=>TOPIC_MAP[id]).filter(Boolean);
@@ -3265,7 +3265,7 @@ function PagePractice({wrongSet,addWrong,removeWrong}) {
       </div>
 
       {/* J3.2 底部登录门槛卡片 */}
-      {!window.__SHUMAI_TOKEN__&&filtered.length>3&&(
+      {!window.__SHUMAI_TOKEN&&filtered.length>3&&(
         <div style={{marginTop:16,padding:28,borderRadius:16,textAlign:"center",
           background:"linear-gradient(135deg,#fbbf2408,#f59e0b06)",
           border:"1px solid #fbbf2444"}}>
