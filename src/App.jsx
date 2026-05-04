@@ -6,6 +6,16 @@ import { BASICS_BY_TOPIC, TOPIC_GROUPS, FINAL_GROUPS } from "./data/basics.js";
 import { GRAPH, EDGES, TOPIC_MAP, DEPENDENCIES, DEPENDENTS } from "./data/graph.js";
 import { QUICK_DIAG_QS } from "./data/diag.js";
 
+/* ── 主题色板 ──────────────────────────────────────────────── */
+const THEMES = {
+  dark:  {bg:"#040810",s1:"#080f1a",s2:"#0d1825",s3:"#152035",border:"#1a2d44",border2:"#223650",fg:"#dce8f8",text:"#dce8f8",muted:"#4a6882",dim:"#162030"},
+  light: {bg:"#f4f7fb",s1:"#ffffff",s2:"#f0f4f9",s3:"#e6edf7",border:"#ccd8ea",border2:"#b8ccdf",fg:"#1a2a3a",text:"#1a2a3a",muted:"#6a8aaa",dim:"#dde8f5"},
+  green: {bg:"#05120a",s1:"#091a0e",s2:"#0e2214",s3:"#132d1a",border:"#1b4024",border2:"#234f2e",fg:"#cceedd",text:"#cceedd",muted:"#489966",dim:"#0e2014"},
+  sepia: {bg:"#191510",s1:"#221c13",s2:"#2b2318",s3:"#34291d",border:"#4c3c28",border2:"#5e4b33",fg:"#e8d4af",text:"#e8d4af",muted:"#9a8060",dim:"#1e160e"},
+};
+// 应用已保存的主题（在任何组件渲染前执行）
+try{const _t=JSON.parse(localStorage.getItem("shumai_v7")||"{}").themeId;if(_t&&THEMES[_t])Object.assign(C,THEMES[_t]);}catch{}
+
 /* ── Responsive Breakpoint System ────────────────────────────
    Breakpoints: Mobile < 640px | Tablet 640-1023px | Desktop ≥ 1024px
 ────────────────────────────────────────────────────────────── */
@@ -7699,6 +7709,18 @@ export default function App() {
   // AI 设置变化时自动保存
   useEffect(()=>{ saveStorage({aiModel,dsKey,dbKey}); },[aiModel,dsKey,dbKey]);
 
+  // ── 主题系统 ──────────────────────────────────────────────
+  const [themeId,setThemeId]=useState(_saved.themeId||"dark");
+  const [forceKey,setForceKey]=useState(0); // 切换主题时强制全量重渲染
+  const [showSettings,setShowSettings]=useState(false);
+  const applyTheme=(id)=>{
+    if(!THEMES[id])return;
+    Object.assign(C,THEMES[id]);
+    setThemeId(id);
+    setForceKey(k=>k+1);
+    saveStorage({themeId:id});
+  };
+
   // 清空所有学习记录（保留 API Key）
   const clearAllProgress = () => {
     setMastered(new Set());
@@ -7771,7 +7793,7 @@ export default function App() {
 
   return(
     <BPCtx.Provider value={bp}>
-    <div style={{minHeight:"100vh",background:C.bg,color:C.text,
+    <div key={forceKey} style={{minHeight:"100vh",background:C.bg,color:C.text,
       fontFamily:"'PingFang SC','Noto Sans SC','Microsoft YaHei',sans-serif"}}>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -7909,8 +7931,84 @@ export default function App() {
               )
             )}
           </div>
+
+          {/* 设置按钮 */}
+          <button onClick={()=>setShowSettings(o=>!o)}
+            title="外观设置"
+            style={{padding:"4px 8px",borderRadius:6,cursor:"pointer",fontSize:18,lineHeight:1,
+              background:showSettings?C.alg+"22":"none",flexShrink:0,
+              color:showSettings?C.alg:C.muted,
+              border:`1px solid ${showSettings?C.alg+"55":C.border}`}}>
+            ⚙
+          </button>
         </div>
       </header>
+
+      {/* ── 设置面板 ── */}
+      {showSettings&&(
+        <>
+          <div onClick={()=>setShowSettings(false)}
+            style={{position:"fixed",inset:0,zIndex:199,background:"rgba(0,0,0,.4)"}}/>
+          <div style={{position:"fixed",top:58,right:bp.isMobile?8:18,zIndex:200,
+            background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,
+            padding:"18px 20px",minWidth:260,maxWidth:320,
+            boxShadow:"0 8px 32px #000a"}}>
+            <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:14}}>
+              ⚙ 外观设置
+            </div>
+
+            {/* 主题选择 */}
+            <div style={{fontSize:13,color:C.muted,marginBottom:8,letterSpacing:"0.5px"}}>主题</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+              {[
+                {id:"dark", label:"🌙 深色", preview:["#040810","#dce8f8"]},
+                {id:"light",label:"☀️ 浅色", preview:["#f4f7fb","#1a2a3a"]},
+                {id:"green",label:"🌿 护眼", preview:["#05120a","#cceedd"]},
+                {id:"sepia",label:"📜 暖棕", preview:["#191510","#e8d4af"]},
+              ].map(t=>(
+                <button key={t.id} onClick={()=>applyTheme(t.id)}
+                  style={{padding:"10px 12px",borderRadius:10,cursor:"pointer",
+                    display:"flex",alignItems:"center",gap:8,
+                    background:themeId===t.id?C.alg+"22":C.s2,
+                    border:`2px solid ${themeId===t.id?C.alg:C.border}`,
+                    color:C.text,fontSize:14,fontWeight:themeId===t.id?700:400}}>
+                  <div style={{display:"flex",gap:3}}>
+                    <div style={{width:14,height:14,borderRadius:3,background:t.preview[0],border:"1px solid #fff2"}}/>
+                    <div style={{width:14,height:14,borderRadius:3,background:t.preview[1],border:"1px solid #fff2"}}/>
+                  </div>
+                  {t.label}
+                  {themeId===t.id&&<span style={{marginLeft:"auto",color:C.alg,fontSize:16}}>✓</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* 清空记录 */}
+            <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
+              <div style={{fontSize:13,color:C.muted,marginBottom:8}}>数据</div>
+              {!showClearConfirm?(
+                <button onClick={()=>setShowClearConfirm(true)}
+                  style={{width:"100%",padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:14,
+                    background:"none",color:C.red,border:`1px solid ${C.red}44`,textAlign:"left"}}>
+                  🗑 清空所有学习记录
+                </button>
+              ):(
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>{clearAllProgress();setShowSettings(false);}}
+                    style={{flex:1,padding:"7px",borderRadius:7,cursor:"pointer",fontSize:14,
+                      background:C.red,color:"white",border:"none",fontWeight:700}}>
+                    确认清空
+                  </button>
+                  <button onClick={()=>setShowClearConfirm(false)}
+                    style={{flex:1,padding:"7px",borderRadius:7,cursor:"pointer",fontSize:14,
+                      background:"none",color:C.muted,border:`1px solid ${C.border}`}}>
+                    取消
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* BODY */}
       <div style={{display:"flex",height:"calc(100vh - 52px)",position:"relative",overflow:"hidden"}}>
