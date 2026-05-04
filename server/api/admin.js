@@ -11,14 +11,20 @@ import pool from '../db.js';
 
 const router = Router();
 
-// 管理员鉴权中间件（role = 'admin'）
+// 管理员鉴权中间件（role = 'admin' 或手机号在 ADMIN_PHONE 列表中）
 async function adminGuard(req, res, next) {
   try {
+    // 优先：ADMIN_PHONE 环境变量（逗号分隔多个号码）
+    const adminPhones = (process.env.ADMIN_PHONE || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (adminPhones.includes(req.user.phone)) return next();
+
+    // 兜底：数据库 role 字段
     const result = await pool.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
     const role = result.rows[0]?.role;
-    if (role !== 'admin') return res.status(403).json({ error: '无管理员权限' });
-    next();
-  } catch {
+    if (role === 'admin') return next();
+
+    res.status(403).json({ error: '无管理员权限' });
+  } catch (err) {
     res.status(500).json({ error: '权限验证失败' });
   }
 }
