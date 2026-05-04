@@ -7825,9 +7825,16 @@ function AIFloat({context}) {
 ════════════════════════════════════════════════════════════ */
 export default function App() {
   const [view,setView]=useState(()=>{
-    const p=new URLSearchParams(window.location.search).get("view");
-    if(p) return p;
-    try{ return JSON.parse(localStorage.getItem("shumai_v7")||"{}").lastView||"home"; }catch{ return "home"; }
+    const params=new URLSearchParams(window.location.search);
+    const p=params.get("view");
+    if(p){
+      history.replaceState(null,"",window.location.pathname);
+      if(p!=="admin") return p;
+    }
+    try{
+      const lv=JSON.parse(localStorage.getItem("shumai_v7")||"{}").lastView||"home";
+      return lv==="admin"?"home":lv;
+    }catch{ return "home"; }
   });
   const [detailId,setDetailId]=useState(null);
   const bp = useWindowSize();
@@ -7891,15 +7898,23 @@ export default function App() {
   const [authUser,setAuthUser]=useState(()=>{
     try{return JSON.parse(localStorage.getItem("shumai_auth_user")||"null");}catch{return null;}
   });
-  const [authToken,setAuthToken]=useState(()=>localStorage.getItem("shumai_auth_token")||"");
+  const [authToken,setAuthToken]=useState(()=>{
+    const t=localStorage.getItem("shumai_auth_token")||"";
+    if(t) window.__SHUMAI_TOKEN=t;
+    return t;
+  });
   const [showAuth,setShowAuth]=useState(false);
   const [editingNickname,setEditingNickname]=useState(false);
   const handleLogin=(user,token)=>{
     setAuthUser(user);
     setAuthToken(token);
+    window.__SHUMAI_TOKEN=token;
     try{
       localStorage.setItem("shumai_auth_user",JSON.stringify(user));
       localStorage.setItem("shumai_auth_token",token);
+      if(user.nickname&&user.nickname!=="同学"){
+        localStorage.setItem("shumai_nickname",user.nickname);
+      }
     }catch{}
   };
   const handleLogout=()=>{
