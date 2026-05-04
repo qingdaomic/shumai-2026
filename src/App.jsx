@@ -1703,9 +1703,9 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                             <span style={{fontSize:19,fontWeight:800,color:isM?C.ok:C.text}}>{t.name}</span>
                             <Tag c={C.muted} sm>{t.semester}</Tag>
                             {isM&&<Tag c={C.ok} sm>✓ 已掌握</Tag>}
-                            {basics.filter(q=>safeBasicWrong.has(q.id)).length>0&&(
+                            {(BASICS_BY_TOPIC[t.id]||[]).filter(q=>safeBasicWrong.has(q.id)).length>0&&(
                               <Tag c={C.red} sm>
-                                {basics.filter(q=>safeBasicWrong.has(q.id)).length}道错题
+                                {(BASICS_BY_TOPIC[t.id]||[]).filter(q=>safeBasicWrong.has(q.id)).length}道错题
                               </Tag>
                             )}
                           </div>
@@ -1901,7 +1901,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                     {(topicSearch?filteredTopics:TOPICS.filter(t=>t.domain===domKey)).map(t=>{
                       const isSelected=selTopic===t.id;
                       const basics=questionService.getBasicByTopic(t.id);
-                      const wrongCount=basics.filter(q=>safeBasicWrong.has(q.id)).length;
+                      const wrongCount=(BASICS_BY_TOPIC[t.id]||[]).filter(q=>safeBasicWrong.has(q.id)).length;
                       return(
                         <button key={t.id} onClick={()=>setSelTopic(isSelected?null:t.id)}
                           style={{padding:"4px 12px",borderRadius:20,fontSize:15,cursor:"pointer",
@@ -2326,7 +2326,8 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                         <Dots v={q.diff||2} c={c} max={3}/>
                         {isW&&<Tag c={C.red} sm>已标记错题</Tag>}
                         <div style={{marginLeft:"auto",display:"flex",gap:6}}>
-                          <button onClick={()=>isW?removeM3Wrong(qId):addM3Wrong(qId)}
+                          <button
+                            onClick={()=>{if(isW){removeM3Wrong(qId);removeBasicWrong(qId);}else{addM3Wrong(qId);addBasicWrong(qId);}}}
                             style={{padding:"3px 10px",borderRadius:6,cursor:"pointer",fontSize:14,
                               background:isW?C.red+"18":"none",
                               color:isW?C.red:C.muted,
@@ -2559,7 +2560,8 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                         <Dots v={q.diff||3} c={C.m4} max={3}/>
                         {isW&&<Tag c={C.red} sm>已标记错题</Tag>}
                         <div style={{marginLeft:"auto",display:"flex",gap:6}}>
-                          <button onClick={()=>isW?removeM4Wrong(qId):addM4Wrong(qId)}
+                          <button
+                            onClick={()=>{if(isW){removeM4Wrong(qId);removeBasicWrong(qId);}else{addM4Wrong(qId);addBasicWrong(qId);}}}
                             style={{padding:"3px 10px",borderRadius:6,cursor:"pointer",fontSize:14,
                               background:isW?C.red+"18":"none",
                               color:isW?C.red:C.muted,
