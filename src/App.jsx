@@ -7361,12 +7361,13 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
   },[questionId,needsFigure]);
 
   const saveSvg=async(svgStr)=>{
-    if(!questionId||!API) return;
+    if(!questionId) return;
     const topic=topicIds[0]||"";
+    const t=window.__SHUMAI_TOKEN||"";
     try{
       await fetch(`${API}/api/svg/${encodeURIComponent(questionId)}`,{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:{"Content-Type":"application/json",...(t?{"Authorization":`Bearer ${t}`}:{})},
         body:JSON.stringify({svg:svgStr,questionType,topic}),
       });
     }catch{}
@@ -7398,7 +7399,7 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
   // 如果有API Key且无缓存，自动触发生成
   useEffect(()=>{
     if(!needsFigure) return;
-    if(!svg && !loading && !err && window.__SHUMAI_API &&
+    if(!svg && !loading && !err &&
        (window.__SHUMAI_DSKEY || window.__SHUMAI_DBKEY)){
       // 延迟500ms避免同时大量请求
       const timer = setTimeout(()=>generate(), 500);

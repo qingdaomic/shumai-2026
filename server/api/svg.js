@@ -4,8 +4,18 @@
 // GET  /api/svg/stats            — 统计已有 SVG 数量（管理端用）
 
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import pool from '../db.js';
 import { authMiddleware as authenticateToken } from './auth.js';
+
+const SECRET = process.env.JWT_SECRET || 'dev-secret';
+const optionalAuth = (req, res, next) => {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) {
+    try { req.user = jwt.verify(auth.slice(7), SECRET); } catch {}
+  }
+  next();
+};
 
 const router = express.Router();
 
@@ -60,8 +70,8 @@ router.get('/:questionId', async (req, res) => {
   }
 });
 
-// POST /api/svg/:questionId — 保存 SVG（需登录）
-router.post('/:questionId', authenticateToken, async (req, res) => {
+// POST /api/svg/:questionId — 保存 SVG（可选登录，未登录则 generated_by=NULL）
+router.post('/:questionId', optionalAuth, async (req, res) => {
   const { questionId } = req.params;
   const { svg, questionType = 'basic', topic = '' } = req.body;
   const userId = req.user?.id;
