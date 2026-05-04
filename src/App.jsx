@@ -7187,13 +7187,38 @@ const GEO_TOPIC_IDS = new Set([
 
 const GEO_KW = /如图|△|∠|⊥|∥|三角形|圆|梯形|菱形|矩形|正方形|平行四边形|线段|射线|多边形|对角线|中点|垂线|角平分线|切线|弧|弦/;
 
-function GeoFigure({content, topicIds=[]}) {
+function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) {
   const [svg,setSvg]=useState("");
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState(false);
+  const [fromCache,setFromCache]=useState(false);
+  const API=window.__SHUMAI_API||"";
 
   const needsFigure=topicIds.some(t=>GEO_TOPIC_IDS.has(t))||GEO_KW.test(content);
   if(!needsFigure) return null;
+
+  // 自动读取缓存
+  useEffect(()=>{
+    if(!questionId||svg) return;
+    fetch(`${API}/api/svg/${encodeURIComponent(questionId)}`)
+      .then(r=>r.json())
+      .then(d=>{
+        if(d.exists&&d.svg){ setSvg(d.svg); setFromCache(true); }
+      })
+      .catch(()=>{});
+  },[questionId]);
+
+  const saveSvg=async(svgStr)=>{
+    if(!questionId||!API) return;
+    const topic=topicIds[0]||"";
+    try{
+      await fetch(`${API}/api/svg/${encodeURIComponent(questionId)}`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({svg:svgStr,questionType,topic}),
+      });
+    }catch{}
+  };
 
   const generate=async()=>{
     setLoading(true);setErr(false);
@@ -7209,7 +7234,11 @@ function GeoFigure({content, topicIds=[]}) {
 - 圆的题目画圆+相关线段`;
       const raw=await callAI(sys,`画这道几何题的示意图：${content.slice(0,300)}`);
       const m=raw.match(/<svg[\s\S]*?<\/svg>/i);
-      if(m) setSvg(m[0]); else setErr(true);
+      if(m){
+        setSvg(m[0]);
+        setFromCache(false);
+        saveSvg(m[0]); // 自动保存缓存
+      } else setErr(true);
     }catch{setErr(true);}
     setLoading(false);
   };
@@ -7218,7 +7247,10 @@ function GeoFigure({content, topicIds=[]}) {
     <div style={{marginTop:8,marginBottom:8}}>
       <div dangerouslySetInnerHTML={{__html:svg}}
         style={{borderRadius:8,overflow:"hidden"}}/>
-      <div style={{display:"flex",gap:10,marginTop:4}}>
+      <div style={{display:"flex",gap:10,marginTop:4,alignItems:"center"}}>
+        {fromCache&&(
+          <span style={{fontSize:11,color:C.ok}}>✓ 已缓存</span>
+        )}
         <button onClick={generate} disabled={loading}
           style={{fontSize:12,color:C.muted,background:"none",border:"none",
             cursor:"pointer",padding:0,opacity:loading?0.5:1}}>
