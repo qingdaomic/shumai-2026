@@ -2275,6 +2275,14 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
             const c=DOM[TOPIC_MAP[tg.topics[0]]?.domain]?.color||C.m3;
             return(
               <div>
+                {/* 返回列表按钮（手机/pad直接选组时使用） */}
+                <button onClick={()=>{setSelGroup(null);if(moduleNavStack.length>0)navBack();}}
+                  style={{display:"inline-flex",alignItems:"center",gap:6,
+                    padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:15,
+                    background:C.s2,color:C.muted,border:`1px solid ${C.border}`,
+                    marginBottom:12}}>
+                  ← 返回题组列表
+                </button>
                 {/* 题组信息卡 */}
                 <div style={{background:C.s1,border:`1px solid ${c}30`,borderRadius:12,
                   padding:"16px 20px",marginBottom:16}}>
@@ -2504,6 +2512,14 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
             if(!fg)return null;
             return(
               <div>
+                {/* 返回列表按钮（手机/pad直接选组时使用） */}
+                <button onClick={()=>{setSelFinal(null);if(moduleNavStack.length>0)navBack();}}
+                  style={{display:"inline-flex",alignItems:"center",gap:6,
+                    padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:15,
+                    background:C.s2,color:C.muted,border:`1px solid ${C.border}`,
+                    marginBottom:12}}>
+                  ← 返回压轴列表
+                </button>
                 {/* 压轴组信息卡 */}
                 <div style={{background:C.s1,border:`1px solid ${C.m4}30`,borderRadius:12,
                   padding:"16px 20px",marginBottom:16}}>
@@ -7360,6 +7376,129 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
 }
 
 /* ════════════════════════════════════════════════════════════
+   🔑 登录 / 注册 弹窗
+════════════════════════════════════════════════════════════ */
+const BACKEND_URL = "https://shumai-2026-production.up.railway.app";
+
+function AuthModal({onClose, onLogin}) {
+  const [tab,setTab]=useState("login");
+  const [phone,setPhone]=useState("");
+  const [password,setPassword]=useState("");
+  const [nickname,setNickname]=useState("");
+  const [inviteCode,setInviteCode]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+
+  const submit=async()=>{
+    setErr("");
+    if(!phone.trim()||!password.trim()){setErr("手机号和密码必填");return;}
+    if(tab==="register"&&password.length<6){setErr("密码至少6位");return;}
+    if(tab==="register"&&!inviteCode.trim()){setErr("邀请码必填");return;}
+    setLoading(true);
+    try{
+      const url=`${BACKEND_URL}/api/auth/${tab==="login"?"login":"register"}`;
+      const body=tab==="login"
+        ?{phone:phone.trim(),password}
+        :{phone:phone.trim(),password,nickname:nickname.trim()||"同学",inviteCode:inviteCode.trim()};
+      const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const d=await r.json();
+      if(!r.ok){setErr(d.error||"操作失败");setLoading(false);return;}
+      onLogin(d.user,d.token);
+      onClose();
+    }catch{setErr("网络错误，请稍后重试");}
+    setLoading(false);
+  };
+
+  return(
+    <>
+      <div onClick={onClose}
+        style={{position:"fixed",inset:0,zIndex:299,background:"rgba(0,0,0,.65)"}}/>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",
+        zIndex:300,background:C.s1,border:`1px solid ${C.border}`,
+        borderRadius:18,padding:"28px 28px 22px",width:320,maxWidth:"92vw",
+        boxShadow:"0 16px 56px #000d"}}>
+
+        <div style={{fontSize:20,fontWeight:900,color:C.text,marginBottom:20,textAlign:"center"}}>
+          ∑ 数脉
+        </div>
+
+        {/* Tab 切换 */}
+        <div style={{display:"flex",gap:0,marginBottom:20,
+          background:C.s2,borderRadius:8,padding:3}}>
+          {[["login","登录"],["register","注册"]].map(([t,l])=>(
+            <button key={t} onClick={()=>{setTab(t);setErr("");}}
+              style={{flex:1,padding:"8px",borderRadius:6,cursor:"pointer",
+                fontSize:15,fontWeight:700,border:"none",
+                background:tab===t?C.alg:"transparent",
+                color:tab===t?"white":C.muted,transition:"all .18s"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {/* 表单 */}
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {tab==="register"&&(
+            <input value={inviteCode} onChange={e=>setInviteCode(e.target.value)}
+              placeholder="邀请码（必填）"
+              style={{padding:"11px 14px",borderRadius:8,fontSize:15,
+                background:C.s2,border:`1px solid ${C.border}`,
+                color:C.text,outline:"none"}}/>
+          )}
+          <input value={phone} onChange={e=>setPhone(e.target.value)}
+            placeholder="手机号" type="tel" inputMode="numeric"
+            style={{padding:"11px 14px",borderRadius:8,fontSize:15,
+              background:C.s2,border:`1px solid ${C.border}`,
+              color:C.text,outline:"none"}}/>
+          <input value={password} onChange={e=>setPassword(e.target.value)}
+            placeholder={tab==="register"?"密码（至少6位）":"密码"}
+            type="password"
+            onKeyDown={e=>e.key==="Enter"&&submit()}
+            style={{padding:"11px 14px",borderRadius:8,fontSize:15,
+              background:C.s2,border:`1px solid ${C.border}`,
+              color:C.text,outline:"none"}}/>
+          {tab==="register"&&(
+            <input value={nickname} onChange={e=>setNickname(e.target.value)}
+              placeholder="昵称（选填）"
+              style={{padding:"11px 14px",borderRadius:8,fontSize:15,
+                background:C.s2,border:`1px solid ${C.border}`,
+                color:C.text,outline:"none"}}/>
+          )}
+        </div>
+
+        {err&&(
+          <div style={{marginTop:10,padding:"8px 12px",borderRadius:7,
+            background:C.red+"18",color:C.red,fontSize:13,textAlign:"center"}}>
+            {err}
+          </div>
+        )}
+
+        <button onClick={submit} disabled={loading}
+          style={{width:"100%",marginTop:16,padding:"13px",borderRadius:10,
+            cursor:"pointer",fontSize:16,fontWeight:800,border:"none",
+            background:loading?C.border:C.alg,color:"white",
+            opacity:loading?0.7:1,transition:"all .2s"}}>
+          {loading?"请稍候…":(tab==="login"?"登录":"注册")}
+        </button>
+
+        <button onClick={onClose}
+          style={{width:"100%",marginTop:8,padding:"9px",borderRadius:8,
+            cursor:"pointer",fontSize:14,background:"none",
+            color:C.muted,border:`1px solid ${C.border}`}}>
+          取消
+        </button>
+
+        {tab==="register"&&(
+          <div style={{marginTop:12,fontSize:12,color:C.dim,textAlign:"center",lineHeight:1.6}}>
+            注册即同意服务条款 · 邀请码请联系管理员获取
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    🤖 AI 讲解卡片组件 — "问学长"按钮点击后展开
 ════════════════════════════════════════════════════════════ */
 function AskTutor({q, topicName, mode="explain"}) {
@@ -7439,27 +7578,24 @@ function AskTutor({q, topicName, mode="explain"}) {
               {loading&&<div style={{fontSize:13,color:"#a78bfa",marginBottom:8}}>💭 学长正在回答...</div>}
               {/* 追问输入行 */}
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                {/* 语音按钮 */}
-                <button onClick={micOn?stopVoice:startVoice}
-                  title={micOn?"点击停止录音":"点击语音追问"}
-                  style={{flexShrink:0,width:36,height:36,borderRadius:"50%",
-                    cursor:"pointer",border:"none",fontSize:17,
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    background:micOn?"#ef4444":"#a78bfa22",
-                    color:micOn?"white":"#a78bfa",
-                    boxShadow:micOn?"0 0 0 4px #ef444430":"none",
-                    transition:"all .2s",
-                    animation:micOn?"pulse 1s infinite":"none"}}>
-                  {micOn?"⏹":"🎤"}
-                </button>
                 <input value={followUp} onChange={e=>setFollowUp(e.target.value)}
                   onKeyDown={e=>e.key==="Enter"&&handleFollowUp()}
-                  placeholder={micOn?"🎤 正在听…说完后自动填入":"继续追问，或点🎤语音提问"}
+                  placeholder={micOn?"🎤 正在听，说完自动填入…":"继续追问学长…"}
                   style={{flex:1,padding:"8px 14px",borderRadius:20,
                     background:micOn?"#ef44440d":C.s1,
                     border:`1px solid ${micOn?"#ef4444":C.border}`,
                     color:C.text,fontSize:14,outline:"none",
                     transition:"all .2s"}}/>
+                {/* 语音追问按钮 */}
+                <button onClick={micOn?stopVoice:startVoice}
+                  style={{flexShrink:0,padding:"7px 10px",borderRadius:8,
+                    cursor:"pointer",fontSize:13,fontWeight:600,whiteSpace:"nowrap",
+                    background:micOn?"#ef444422":"#a78bfa11",
+                    color:micOn?"#ef4444":"#a78bfa",
+                    border:`1px solid ${micOn?"#ef444466":"#a78bfa44"}`,
+                    transition:"all .2s"}}>
+                  {micOn?"⏹ 停止":"语音追问"}
+                </button>
                 <button onClick={handleFollowUp} disabled={loading||!followUp.trim()}
                   style={{flexShrink:0,padding:"8px 16px",borderRadius:20,cursor:"pointer",
                     background:"#a78bfa",color:"white",border:"none",
@@ -7713,6 +7849,29 @@ export default function App() {
   const [themeId,setThemeId]=useState(_saved.themeId||"dark");
   const [forceKey,setForceKey]=useState(0); // 切换主题时强制全量重渲染
   const [showSettings,setShowSettings]=useState(false);
+
+  // ── 用户系统 ──────────────────────────────────────────────
+  const [authUser,setAuthUser]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("shumai_auth_user")||"null");}catch{return null;}
+  });
+  const [authToken,setAuthToken]=useState(()=>localStorage.getItem("shumai_auth_token")||"");
+  const [showAuth,setShowAuth]=useState(false);
+  const handleLogin=(user,token)=>{
+    setAuthUser(user);
+    setAuthToken(token);
+    try{
+      localStorage.setItem("shumai_auth_user",JSON.stringify(user));
+      localStorage.setItem("shumai_auth_token",token);
+    }catch{}
+  };
+  const handleLogout=()=>{
+    setAuthUser(null);
+    setAuthToken("");
+    try{
+      localStorage.removeItem("shumai_auth_user");
+      localStorage.removeItem("shumai_auth_token");
+    }catch{}
+  };
   const applyTheme=(id)=>{
     if(!THEMES[id])return;
     Object.assign(C,THEMES[id]);
@@ -7934,8 +8093,8 @@ export default function App() {
 
           {/* 设置按钮 */}
           <button onClick={()=>setShowSettings(o=>!o)}
-            title="外观设置"
-            style={{padding:"4px 8px",borderRadius:6,cursor:"pointer",fontSize:18,lineHeight:1,
+            title="设置"
+            style={{padding:"6px 10px",borderRadius:8,cursor:"pointer",fontSize:22,lineHeight:1,
               background:showSettings?C.alg+"22":"none",flexShrink:0,
               color:showSettings?C.alg:C.muted,
               border:`1px solid ${showSettings?C.alg+"55":C.border}`}}>
@@ -7982,6 +8141,38 @@ export default function App() {
               ))}
             </div>
 
+            {/* 账号区 */}
+            <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginBottom:12}}>
+              <div style={{fontSize:13,color:C.muted,marginBottom:8}}>账号</div>
+              {authUser?(
+                <div>
+                  <div style={{padding:"10px 14px",borderRadius:8,
+                    background:C.s2,border:`1px solid ${C.border}`,
+                    marginBottom:8}}>
+                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>
+                      👤 {authUser.nickname}
+                    </div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+                      {authUser.phone}
+                    </div>
+                  </div>
+                  <button onClick={()=>{handleLogout();setShowSettings(false);}}
+                    style={{width:"100%",padding:"8px 14px",borderRadius:8,cursor:"pointer",
+                      fontSize:14,background:"none",color:C.red,
+                      border:`1px solid ${C.red}44`,textAlign:"left"}}>
+                    🚪 退出登录
+                  </button>
+                </div>
+              ):(
+                <button onClick={()=>{setShowAuth(true);setShowSettings(false);}}
+                  style={{width:"100%",padding:"9px 14px",borderRadius:8,cursor:"pointer",
+                    fontSize:14,background:C.alg,color:"white",
+                    border:"none",fontWeight:700,textAlign:"center"}}>
+                  🔑 登录 / 注册
+                </button>
+              )}
+            </div>
+
             {/* 清空记录 */}
             <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
               <div style={{fontSize:13,color:C.muted,marginBottom:8}}>数据</div>
@@ -8008,6 +8199,14 @@ export default function App() {
             </div>
           </div>
         </>
+      )}
+
+      {/* 登录注册弹窗 */}
+      {showAuth&&(
+        <AuthModal
+          onClose={()=>setShowAuth(false)}
+          onLogin={(user,token)=>{handleLogin(user,token);}}
+        />
       )}
 
       {/* BODY */}

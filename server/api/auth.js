@@ -9,8 +9,15 @@ const SECRET = process.env.JWT_SECRET || 'dev-secret';
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { phone, password, nickname, grade } = req.body;
+    const { phone, password, nickname, grade, inviteCode } = req.body;
     if (!phone || !password) return res.status(400).json({ error: '手机号和密码必填' });
+
+    // 邀请码校验（从环境变量 INVITE_CODES 读取，逗号分隔）
+    const validCodes = (process.env.INVITE_CODES || '')
+      .split(',').map(c => c.trim()).filter(Boolean);
+    if (validCodes.length > 0 && !validCodes.includes(inviteCode)) {
+      return res.status(400).json({ error: '邀请码无效，请联系管理员获取' });
+    }
 
     const hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
