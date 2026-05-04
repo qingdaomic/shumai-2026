@@ -1571,12 +1571,16 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
   const [ttsText,setTtsText]=useState({});
   // M3 题组训练状态
   const [selGroup,setSelGroup]=useState(null);
-  const [m3WrongSet,setM3WrongSet]=useState(new Set());
+  const [m3WrongSet,setM3WrongSet]=useState(()=>
+    new Set([...basicWrongSet].filter(id=>TOPIC_GROUPS.some(tg=>id.startsWith(tg.id+"_"))))
+  );
   const addM3Wrong=(id)=>setM3WrongSet(p=>new Set([...p,id]));
   const removeM3Wrong=(id)=>setM3WrongSet(p=>{const s=new Set(p);s.delete(id);return s;});
   // M4 压轴题组状态
   const [selFinal,setSelFinal]=useState(null);
-  const [m4WrongSet,setM4WrongSet]=useState(new Set());
+  const [m4WrongSet,setM4WrongSet]=useState(()=>
+    new Set([...basicWrongSet].filter(id=>FINAL_GROUPS.some(fg=>id.startsWith(fg.id+"_"))))
+  );
   const addM4Wrong=(id)=>setM4WrongSet(p=>new Set([...p,id]));
   const removeM4Wrong=(id)=>setM4WrongSet(p=>{const s=new Set(p);s.delete(id);return s;});
 
@@ -3291,9 +3295,31 @@ function PagePractice({wrongSet,addWrong,removeWrong}) {
 }
 
 /* ════════════════════════════════════════════════════════════
+   HELPER: 通过 ID 查找基础/题组/压轴题内容
+════════════════════════════════════════════════════════════ */
+function lookupBasicQ(id){
+  if(id.startsWith('b_')){
+    return Object.values(BASICS_BY_TOPIC).flat().find(q=>q.id===id)||null;
+  }
+  const tg=TOPIC_GROUPS.find(g=>id.startsWith(g.id+"_"));
+  if(tg){
+    const idx=parseInt(id.slice(tg.id.length+1));
+    const q=tg.questions?.[idx];
+    return q?{...q,id,_label:`[题组] ${tg.name}`}:null;
+  }
+  const fg=FINAL_GROUPS.find(g=>id.startsWith(g.id+"_"));
+  if(fg){
+    const idx=parseInt(id.slice(fg.id.length+1));
+    const q=fg.questions?.[idx];
+    return q?{...q,id,_label:`[压轴] ${fg.name}`}:null;
+  }
+  return null;
+}
+
+/* ════════════════════════════════════════════════════════════
    PAGE: WRONG BOOK
 ════════════════════════════════════════════════════════════ */
-function PageWrong({wrongSet,removeWrong,mastered,onNav}) {
+function PageWrong({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),removeBasicWrong=()=>{}}) {
   const {isMobile}=useBP();
   const [filter,setFilter]=useState(()=>q=>wrongSet.has(q.id));
   const [openSol,setOpenSol]=useState(null);
@@ -3301,6 +3327,7 @@ function PageWrong({wrongSet,removeWrong,mastered,onNav}) {
   const [ttsLoading,setTtsLoading]=useState(null);
   const [ttsText,setTtsText]=useState({});
   const wrongQs=EXAM_QS.filter(filter);
+  const basicWrongQsList=[...basicWrongSet].map(lookupBasicQ).filter(Boolean);
 
   const handleSpeak = async (q) => {
     const topicName = TOPIC_MAP[q.topic]?.name || "本题";
@@ -3322,12 +3349,12 @@ function PageWrong({wrongSet,removeWrong,mastered,onNav}) {
     byTopic[q.topic].push(q);
   });
 
-  if(wrongQs.length===0)return(
+  if(wrongQs.length===0&&basicWrongQsList.length===0)return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",
       justifyContent:"center",height:"60%",gap:16,color:C.muted}}>
       <div style={{fontSize:52}}>🎉</div>
       <div style={{fontSize:22,fontWeight:700,color:C.text}}>错题本为空</div>
-      <div style={{fontSize:17}}>做题时点击"+ 错题本"收录错题</div>
+      <div style={{fontSize:17}}>做题时点击"做错了"收录错题</div>
     </div>
   );
 
@@ -3398,7 +3425,52 @@ function PageWrong({wrongSet,removeWrong,mastered,onNav}) {
         })}
       </div>
 
-      {/* Questions */}
+      {/* 基础/题组/压轴错题 */}
+      {basicWrongQsList.length>0&&(
+        <div style={{marginBottom:20}}>
+          <h3 style={{margin:"0 0 12px",fontSize:18,fontWeight:700,color:C.m3}}>📚 基础·题组·压轴错题</h3>
+          {basicWrongQsList.map(q=>{
+            const sol=openSol===q.id;
+            return(
+              <div key={q.id} style={{background:C.s1,border:`1px solid ${C.border}`,
+                borderRadius:10,padding:14,marginBottom:10}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+                  {q._label&&<span style={{fontSize:13,padding:"2px 8px",borderRadius:12,
+                    background:C.m3+"22",color:C.m3,fontWeight:700}}>{q._label}</span>}
+                  <button
+                    onClick={()=>removeBasicWrong(q.id)}
+                    style={{marginLeft:"auto",fontSize:14,padding:"2px 9px",borderRadius:5,
+                      cursor:"pointer",background:"none",color:C.muted,border:`1px solid ${C.border}`}}>
+                    移出错题本
+                  </button>
+                </div>
+                <div style={{background:C.s2,padding:"10px 12px",borderRadius:7,
+                  borderLeft:`2px solid ${C.m3}`,marginBottom:8}}>
+                  <p style={{margin:0,fontSize:16,color:C.text,lineHeight:1.7}}>{q.content}</p>
+                </div>
+                <button
+                  onClick={()=>setOpenSol(sol?null:q.id)}
+                  style={{fontSize:15,padding:"3px 10px",borderRadius:5,cursor:"pointer",
+                    background:"none",color:C.geo,border:`1px solid ${C.geo}40`}}>
+                  {sol?"▲ 收起":"▼ 解析"}
+                </button>
+                {sol&&(
+                  <div style={{marginTop:8,background:C.geo+"0a",border:`1px solid ${C.geo}22`,
+                    borderRadius:8,padding:12}}>
+                    <div style={{fontSize:16,fontWeight:700,color:C.gold,marginBottom:6}}>答案：{q.answer}</div>
+                    {q.sol&&<pre style={{margin:"0 0 8px",fontSize:15,color:C.text,lineHeight:1.8,
+                      whiteSpace:"pre-wrap",fontFamily:"inherit"}}>{q.sol}</pre>}
+                    {q.error&&<div style={{padding:"6px 10px",background:C.red+"0d",borderRadius:5,
+                      fontSize:15,color:C.red}}>⚠️ 易错点：{q.error}</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 真题错题 */}
       {Object.entries(byTopic).map(([tid,qs])=>{
         const t=TOPIC_MAP[tid],c=t?DOM[t.domain].color:C.muted;
         return(
@@ -8408,7 +8480,7 @@ export default function App() {
             onNav={navigate} wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
           {view==="methods"&&<PageMethods onNav={navigate}/>}
           {view==="practice"&&<PagePractice wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
-          {view==="wrong"&&<ErrorBoundary label="错题本"><PageWrong wrongSet={wrongSet} removeWrong={removeWrong} mastered={mastered} onNav={navigate}/></ErrorBoundary>}
+          {view==="wrong"&&<ErrorBoundary label="错题本"><PageWrong wrongSet={wrongSet} removeWrong={removeWrong} mastered={mastered} onNav={navigate} basicWrongSet={basicWrongSet} removeBasicWrong={removeBasicWrong}/></ErrorBoundary>}
           {view==="diag"&&<ErrorBoundary label="智能诊断"><PageDiag mastered={mastered} wrongSet={wrongSet} onNav={navigate}/></ErrorBoundary>}
           {view==="predict"&&<PagePredict/>}
           {view==="paper"&&<ErrorBoundary label="试卷分析"><PagePaper mastered={mastered} onNav={navigate}/></ErrorBoundary>}
