@@ -169,7 +169,7 @@
 
 - [x] **迁移** 前端+后端从 Netlify/Railway 迁移到轻量云香港服务器（shumai.cc）
 - [x] **SSL** HTTPS 证书已申请（certbot，shumai.cc）
-- [ ] **C1** 腾讯云备案（并行进行）
+- [ ] **Gzip** Nginx 开启 gzip 压缩，减少前端加载时间（命令：在 `/etc/nginx/nginx.conf` http块加 gzip on; gzip_types ...）
 - [ ] **V1** AI 知识点讲解视频（DeepSeek + HyperFrames）
 - [ ] **V2** 个性化学习计划模块（PagePlan）
 
