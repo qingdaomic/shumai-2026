@@ -1,16 +1,16 @@
 # 数脉 ShuMai — AI 助手指令
 
 > 本文件供 AI 助手（Claude/Windsurf/Cursor 等）在每次对话开始时自动读取，快速恢复项目上下文。  
-> 最后更新：2026-05-04
+> 最后更新：2026-05-05
 
 ---
 
 ## 项目简介
 
 中考数学智能学习系统（"数脉"），面向初中生，目标：从"百科全书"变成"私人教练"。
-- **前端**：React 18 + Vite 5，部署 Netlify → https://shumai-2026.netlify.app
-- **后端**：Node.js + Express，部署 Railway → https://shumai-2026-production.up.railway.app
-- **数据库**：PostgreSQL（Railway 托管）
+- **前端**：React 18 + Vite 5，部署轻量云香港服务器 → https://shumai.cc
+- **后端**：Node.js + Express，PM2 运行在香港服务器 43.128.59.105，端口 3001
+- **数据库**：PostgreSQL（本地 localhost:5432）
 - **微信**：ClawBot（腾讯官方 iLink 协议），学生在微信里和 AI 学伴对话
 - **AI**：DeepSeek API，每道题/每个知识点一键 AI 讲解
 - **学段**：初中数学（七～九年级），后续扩展高中/小学
@@ -31,13 +31,13 @@
 
 | 服务 | 地址 | 用途 |
 |------|------|------|
-| 前端（Netlify） | https://shumai-2026.netlify.app | 学生端 |
-| 后端（Railway） | https://shumai-2026-production.up.railway.app | API 服务 |
-| 后台管理 | https://shumai-2026.netlify.app/?view=admin | 管理端 |
-| 教师端 | https://shumai-2026.netlify.app/?view=teacher | 教师端 |
-| 家长端 | https://shumai-2026.netlify.app/?view=parent | 家长端 |
-| 会员中心 | https://shumai-2026.netlify.app/?view=vip | 会员中心 |
-| 健康检查 | https://shumai-2026-production.up.railway.app/api/health | 后端状态 |
+| 前端（香港服务器） | https://shumai.cc | 学生端 |
+| 后端（香港服务器） | http://43.128.59.105:3001 | API 服务（Nginx反代） |
+| 后台管理 | https://shumai.cc/?view=admin | 管理端 |
+| 教师端 | https://shumai.cc/?view=teacher | 教师端 |
+| 家长端 | https://shumai.cc/?view=parent | 家长端 |
+| 会员中心 | https://shumai.cc/?view=vip | 会员中心 |
+| 健康检查 | https://shumai.cc/api/health | 后端状态 |
 
 ---
 
@@ -108,10 +108,11 @@
 `7a`=七上, `7b`=七下, `8a`=八上, `8b`=八下, `9a`=九上, `9b`=九下
 
 ### 部署更新流程
-- **改前端**：`npx vite build` → 拖 `dist/` 到 Netlify
-- **改后端**：`git push` → Railway 自动部署
+- **改前端**：`npx vite build` → `bash deploy/deploy.sh`（SCP 上传到服务器）
+- **改后端**：`bash deploy/deploy-backend.sh` 或服务器上 `cd /opt/shumai && git pull && pm2 restart shumai-api`
 - **URL 参数路由**：`?view=admin/teacher/parent/vip` 跳转管理页面（不持久化，读后清理）
-- **API 代理**：Netlify `/api/*` → Railway `https://shumai-2026-production.up.railway.app/api/*`
+- **API 代理**：Nginx `/api/*` → `localhost:3001`
+- **服务器**：43.128.59.105，用户 ubuntu，代码在 `/opt/shumai/`，前端静态文件在 `/var/www/shumai/`
 
 ### 用户认证
 - `window.__SHUMAI_TOKEN` 全局 token（单下划线，切勿写成 `__SHUMAI_TOKEN__`）
@@ -163,6 +164,8 @@
 
 ### 🔥 下一步
 
+- [x] **迁移** 前端+后端从 Netlify/Railway 迁移到轻量云香港服务器（shumai.cc）
+- [ ] **SSL** 申请 HTTPS 证书（certbot，需 DNS 解析先生效）
 - [ ] **C1** 腾讯云备案（并行进行）
 - [ ] **V1** AI 知识点讲解视频（DeepSeek + HyperFrames）
 - [ ] **V2** 个性化学习计划模块（PagePlan）
