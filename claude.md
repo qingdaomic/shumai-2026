@@ -20,11 +20,13 @@
 
 ```
 学生手机(PWA/H5) ──┐
-                    ├──→ 后端(Express/Railway) ──→ PostgreSQL(Railway)
+                    ├──→ Nginx(shumai.cc) ──→ 前端静态文件(/var/www/shumai)
 学生微信 ──→ ClawBot ──┘       │
-                              ├──→ DeepSeek AI API
-                              ├──→ OCR API (Mathpix/PaddleOCR)
-                              └──→ node-cron 定时推送
+                               └──→ 后端(PM2/Node.js :3001) ──→ PostgreSQL(localhost)
+                                          │
+                                          ├──→ DeepSeek AI API
+                                          ├──→ OCR API
+                                          └──→ node-cron 定时推送
 ```
 
 ## 部署地址
@@ -60,8 +62,9 @@
 | `claude.md` | 本文件，AI 助手指令 |
 | `FEATURES.md` | 产品功能全景文档 |
 | `server/api/auth.js` | 注册/登录/昵称修改 API |
-| `netlify.toml` | Netlify 转发（`/api/*` 代理到 Railway） |
-| `RAILWAY.md` | Railway 部署指南 |
+| `deploy/nginx-shumai.conf` | Nginx 配置（前端托管 + /api/* 反代） |
+| `deploy/deploy.sh` | 一键部署前端脚本 |
+| `ecosystem.config.cjs` | PM2 启动配置（含环境变量）|
 
 ---
 
@@ -108,8 +111,8 @@
 `7a`=七上, `7b`=七下, `8a`=八上, `8b`=八下, `9a`=九上, `9b`=九下
 
 ### 部署更新流程
-- **改前端**：`npx vite build` → `bash deploy/deploy.sh`（SCP 上传到服务器）
-- **改后端**：`bash deploy/deploy-backend.sh` 或服务器上 `cd /opt/shumai && git pull && pm2 restart shumai-api`
+- **改前端**：本地 `git push` → 服务器上 `cd /opt/shumai && git pull && npm run build && cp -r dist/* /var/www/shumai/`
+- **改后端**：本地 `git push` → 服务器上 `cd /opt/shumai && git pull && pm2 restart shumai-api`
 - **URL 参数路由**：`?view=admin/teacher/parent/vip` 跳转管理页面（不持久化，读后清理）
 - **API 代理**：Nginx `/api/*` → `localhost:3001`
 - **服务器**：43.128.59.105，用户 ubuntu，代码在 `/opt/shumai/`，前端静态文件在 `/var/www/shumai/`
@@ -137,7 +140,7 @@
 ### ✅ 已完成（全部）
 
 **基础设施：**
-- **S1 文件拆分 ✅** / **S2 PWA ✅** / **S3 后端 ✅** / **R1 Railway 部署 ✅**
+- **S1 文件拆分 ✅** / **S2 PWA ✅** / **S3 后端 ✅** / **迁移 轻量云香港服务器 shumai.cc ✅**
 
 **核心功能：**
 - **W1 ClawBot ✅** / **G1 全面AI化 ✅** / **P1 试卷逆向 ✅**
@@ -153,8 +156,8 @@
 - 手机号注册/登录，密码可见性切换
 - 注册后显示昵称头像，昵称可编辑（后端 `PUT /api/auth/profile`）
 - `?view=admin` 读后清理 URL，不持久化
-- `ADMIN_PHONE` 环境变量支持备用 admin 账号
-- Netlify `/api/*` 代理到 Railway
+- `ADMIN_PHONE` 环境变量支持备用 admin 账号（在 ecosystem.config.cjs 里设置）
+- Nginx `/api/*` 反代到 `localhost:3001`
 
 **Bug 修复（B1 系列）✅：**
 - M2 错题角标错误计数（父级共享问题）
@@ -165,7 +168,7 @@
 ### 🔥 下一步
 
 - [x] **迁移** 前端+后端从 Netlify/Railway 迁移到轻量云香港服务器（shumai.cc）
-- [ ] **SSL** 申请 HTTPS 证书（certbot，需 DNS 解析先生效）
+- [x] **SSL** HTTPS 证书已申请（certbot，shumai.cc）
 - [ ] **C1** 腾讯云备案（并行进行）
 - [ ] **V1** AI 知识点讲解视频（DeepSeek + HyperFrames）
 - [ ] **V2** 个性化学习计划模块（PagePlan）
