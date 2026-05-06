@@ -7942,6 +7942,7 @@ export default function App() {
   });
   const [detailId,setDetailId]=useState(null);
   const [prevView,setPrevView]=useState("home");
+  const viewRef=useRef("home");
   const bp = useWindowSize();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -7983,7 +7984,7 @@ export default function App() {
   useEffect(()=>{ saveStorage({mastered:[...mastered]}); masteredRef.current=mastered; },[mastered]);
   useEffect(()=>{ saveStorage({wrongSet:[...wrongSet]}); },[wrongSet]);
   useEffect(()=>{ saveStorage({basicWrongSet:[...basicWrongSet]}); },[basicWrongSet]);
-  useEffect(()=>{ if(view!=="admin") saveStorage({lastView:view}); },[view]);
+  useEffect(()=>{ viewRef.current=view; if(view!=="admin") saveStorage({lastView:view}); },[view]);
 
   // AI 模型选择（从 localStorage 恢复上次的选择和 Key）
   const [aiModel,setAiModel]=useState(_saved.aiModel||"deepseek-chat");
@@ -8115,8 +8116,9 @@ export default function App() {
 
   const navigate=useCallback((v,tid=null)=>{
     if(tid){
-      setView(cv=>{if(cv!=="detail")setPrevView(cv);return"detail";});
+      if(viewRef.current!=="detail") setPrevView(viewRef.current);
       setDetailId(tid);
+      setView("detail");
     } else setView(v);
     setSidebarOpen(false);
   },[]);
@@ -8125,7 +8127,7 @@ export default function App() {
   useEffect(()=>{
     const handler=(e)=>{
       const {v,tid}=e.detail||{};
-      if(v&&tid){setView(cv=>{if(cv!=="detail")setPrevView(cv);return"detail";});setDetailId(tid);}
+      if(v&&tid){if(viewRef.current!=="detail")setPrevView(viewRef.current);setDetailId(tid);setView("detail");}
       else if(v){setView(v);}
     };
     window.addEventListener('shumai-nav',handler);
