@@ -3080,13 +3080,20 @@ function PageMethods({onNav}) {
 /* ════════════════════════════════════════════════════════════
    PAGE: PRACTICE
 ════════════════════════════════════════════════════════════ */
-function PagePractice({wrongSet,addWrong,removeWrong}) {
-  const [topicF,setTopicF]=useState("all");
-  const [yearF,setYearF]=useState("all");
-  const [cityF,setCityF]=useState("all");
-  const [typeF,setTypeF]=useState("all");
-  const [diffF,setDiffF]=useState("all");
-  const [modeF,setModeF]=useState("all");
+function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters}) {
+  const [localF,setLocalF]=useState({topic:"all",year:"all",city:"all",type:"all",diff:"all",mode:"all"});
+  const f=filters||localF;
+  const setF=(key,val)=>{
+    const upd={...(filters||localF),[key]:val};
+    filters?setFilters(upd):setLocalF(upd);
+  };
+  const topicF=f.topic, yearF=f.year, cityF=f.city, typeF=f.type, diffF=f.diff, modeF=f.mode;
+  const setTopicF=v=>setF("topic",v);
+  const setYearF=v=>setF("year",v);
+  const setCityF=v=>setF("city",v);
+  const setTypeF=v=>setF("type",v);
+  const setDiffF=v=>setF("diff",v);
+  const setModeF=v=>setF("mode",v);
   const [openSol,setOpenSol]=useState(null);
   const [ttsId,setTtsId]=useState(null);
   const [ttsLoading,setTtsLoading]=useState(null);
@@ -7943,6 +7950,7 @@ export default function App() {
   const [detailId,setDetailId]=useState(null);
   const [prevView,setPrevView]=useState("home");
   const viewRef=useRef("home");
+  const [practiceF,setPracticeF]=useState({topic:"all",year:"all",city:"all",type:"all",diff:"all",mode:"all"});
   const bp = useWindowSize();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -8560,7 +8568,7 @@ export default function App() {
           {view==="detail"&&<PageDetail topicId={detailId} mastered={mastered} onToggle={toggleM}
             onNav={navigate} prevView={prevView} wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
           {view==="methods"&&<PageMethods onNav={navigate}/>}
-          {view==="practice"&&<PagePractice wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
+          {view==="practice"&&<PagePractice wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong} filters={practiceF} setFilters={setPracticeF}/>}
           {view==="wrong"&&<ErrorBoundary label="错题本"><PageWrong wrongSet={wrongSet} removeWrong={removeWrong} mastered={mastered} onNav={navigate} basicWrongSet={basicWrongSet} removeBasicWrong={removeBasicWrong}/></ErrorBoundary>}
           {view==="diag"&&<ErrorBoundary label="智能诊断"><PageDiag mastered={mastered} wrongSet={wrongSet} onNav={navigate}/></ErrorBoundary>}
           {view==="predict"&&<PagePredict/>}
