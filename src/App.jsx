@@ -3089,7 +3089,7 @@ function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters,highligh
       el.scrollIntoView({behavior:"smooth",block:"center"});
       el.style.transition="box-shadow 0.3s";
       el.style.boxShadow="0 0 0 3px #60a5fa88";
-      setTimeout(()=>{el.style.boxShadow="";if(clearHighlight)clearHighlight();},2000);
+      setTimeout(()=>{el.style.boxShadow="";if(clearHighlight)clearHighlight();},5000);
     }
   },[highlightQId]);
   const f=filters||localF;
