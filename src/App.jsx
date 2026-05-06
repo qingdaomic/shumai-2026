@@ -3080,8 +3080,18 @@ function PageMethods({onNav}) {
 /* ════════════════════════════════════════════════════════════
    PAGE: PRACTICE
 ════════════════════════════════════════════════════════════ */
-function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters}) {
+function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters,highlightQId,clearHighlight}) {
   const [localF,setLocalF]=useState({topic:"all",year:"all",city:"all",type:"all",diff:"all",mode:"all"});
+  useEffect(()=>{
+    if(!highlightQId)return;
+    const el=document.querySelector(`[data-qid="${highlightQId}"]`);
+    if(el){
+      el.scrollIntoView({behavior:"smooth",block:"center"});
+      el.style.transition="box-shadow 0.3s";
+      el.style.boxShadow="0 0 0 3px #60a5fa88";
+      setTimeout(()=>{el.style.boxShadow="";if(clearHighlight)clearHighlight();},2000);
+    }
+  },[highlightQId]);
   const f=filters||localF;
   const setF=(key,val)=>{
     const upd={...(filters||localF),[key]:val};
@@ -3181,7 +3191,7 @@ function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters}) {
           const isW=wrongSet.has(q.id),sol=openSol===q.id;
           const subTs=(q.subTopics||[]).map(id=>TOPIC_MAP[id]).filter(Boolean);
           return(
-            <div key={q.id} style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
+            <div key={q.id} data-qid={q.id} style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
               <div style={{display:"flex",gap:7,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{fontSize:15,color:C.dim,fontWeight:700}}>#{idx+1}</span>
                 {q.city&&<Tag c={C.cyan} sm>{q.city}</Tag>}
@@ -3254,7 +3264,7 @@ function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters}) {
                         {subTs.map(st=>{
                           const sc=DOM[st.domain].color;
                           return(
-                            <button key={st.id} onClick={()=>window.dispatchEvent(new CustomEvent('shumai-nav',{detail:{v:"detail",tid:st.id}}))}
+                            <button key={st.id} onClick={()=>window.dispatchEvent(new CustomEvent('shumai-nav',{detail:{v:"detail",tid:st.id,fromQId:q.id}}))}
                               style={{padding:"3px 9px",borderRadius:20,fontSize:15,cursor:"pointer",
                                 background:sc+"18",border:`1px solid ${sc}44`,color:sc}}>
                               {st.name}
@@ -7951,6 +7961,7 @@ export default function App() {
   const [prevView,setPrevView]=useState("home");
   const viewRef=useRef("home");
   const [practiceF,setPracticeF]=useState({topic:"all",year:"all",city:"all",type:"all",diff:"all",mode:"all"});
+  const [lastPracticeQId,setLastPracticeQId]=useState(null);
   const bp = useWindowSize();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -8135,7 +8146,7 @@ export default function App() {
   useEffect(()=>{
     const handler=(e)=>{
       const {v,tid}=e.detail||{};
-      if(v&&tid){if(viewRef.current!=="detail")setPrevView(viewRef.current);setDetailId(tid);setView("detail");}
+      if(v&&tid){if(viewRef.current!=="detail")setPrevView(viewRef.current);if(e.detail?.fromQId)setLastPracticeQId(e.detail.fromQId);setDetailId(tid);setView("detail");}
       else if(v){setView(v);}
     };
     window.addEventListener('shumai-nav',handler);
@@ -8568,7 +8579,7 @@ export default function App() {
           {view==="detail"&&<PageDetail topicId={detailId} mastered={mastered} onToggle={toggleM}
             onNav={navigate} prevView={prevView} wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
           {view==="methods"&&<PageMethods onNav={navigate}/>}
-          {view==="practice"&&<PagePractice wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong} filters={practiceF} setFilters={setPracticeF}/>}
+          {view==="practice"&&<PagePractice wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong} filters={practiceF} setFilters={setPracticeF} highlightQId={lastPracticeQId} clearHighlight={()=>setLastPracticeQId(null)}/>}
           {view==="wrong"&&<ErrorBoundary label="错题本"><PageWrong wrongSet={wrongSet} removeWrong={removeWrong} mastered={mastered} onNav={navigate} basicWrongSet={basicWrongSet} removeBasicWrong={removeBasicWrong}/></ErrorBoundary>}
           {view==="diag"&&<ErrorBoundary label="智能诊断"><PageDiag mastered={mastered} wrongSet={wrongSet} onNav={navigate}/></ErrorBoundary>}
           {view==="predict"&&<PagePredict/>}
