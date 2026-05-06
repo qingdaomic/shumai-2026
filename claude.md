@@ -1,7 +1,7 @@
 # 数脉 ShuMai — AI 助手指令
 
 > 本文件供 AI 助手（Claude/Windsurf/Cursor 等）在每次对话开始时自动读取，快速恢复项目上下文。  
-> 最后更新：2026-05-05
+> 最后更新：2026-05-06
 
 ---
 
@@ -165,11 +165,30 @@
 - 错题本显示为空（新增 `lookupBasicQ()` ）
 - 真题登录后仍锁定（`__SHUMAI_TOKEN__` 拼写 bug）
 
-### 🔥 下一步
+### ✅ 今日完成（2026-05-06）
 
-- [x] **迁移** 前端+后端从 Netlify/Railway 迁移到轻量云香港服务器（shumai.cc）
-- [x] **SSL** HTTPS 证书已申请（certbot，shumai.cc）
-- [ ] **Gzip** Nginx 开启 gzip 压缩，减少前端加载时间（命令：在 `/etc/nginx/nginx.conf` http块加 gzip on; gzip_types ...）
-- [ ] **V1** AI 知识点讲解视频（DeepSeek + HyperFrames）
-- [ ] **V2** 个性化学习计划模块（PagePlan）
+- **Gzip** ✅ Nginx gzip 压缩已开启（nginx.conf http块）
+- **HSTS** ✅ 强制 HTTPS，无痕模式不再警告
+- **Vite分包** ✅ manualChunks 拆成4包并行加载，gzip后总计~340kB
+- **导航返回Bug修复** ✅ PageDetail「← 返回」现在跳回来源页面（用 viewRef 追踪）
+
+### 🔥 待修复 Bug（优先级高）
+
+**Bug-1：真题刷题筛选条件返回后丢失**
+- 现象：在真题刷题选「二次函数+2015年」→ 点知识点标签进详情页 → 点返回 → 筛选条件被重置为「全部」
+- 根本原因：`PagePractice` 内的 `topicF/yearF/cityF/typeF/diffF` 是组件本地 `useState`，导航离开时组件卸载，状态丢失
+- 修复方案：将 5 个筛选状态提升到 `App` 层，通过 props 传入 `PagePractice`（或存 `sessionStorage`）
+- 文件：`src/App.jsx` → `function PagePractice` 约第 3083 行
+
+**Bug-2：真题刷题跳转知识点详情后，返回无法定位来源题目**
+- 现象：在第3题点「二次函数」标签跳到知识点详情，返回后页面滚到顶部，不知道刚才在第几题
+- 修复方案：导航到 detail 时记录 `lastPracticeQId`（题目id），返回后高亮并滚动到该题
+- 文件：`src/App.jsx` → `PagePractice` 组件，需要接收 `highlightQId` prop 并 `useEffect` 滚动
+
+### 🔜 后续规划
+
+- [ ] **V1** AI 知识点讲解视频（DeepSeek 生成脚本，Manim渲染，独立子项目）
+- [ ] **V2** 个性化学习计划模块（PagePlan，有新想法待融合，暂缓）
+- [ ] **懒加载** 数据文件按模块动态 import，首屏快 60%（中等改动）
+- [ ] **N1/N2** 高中/小学数学扩展（参考 playbook.md）
 
