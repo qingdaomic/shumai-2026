@@ -7,11 +7,20 @@ export default defineConfig({
     outDir: "dist",
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ["react", "react-dom"],
+        manualChunks(id) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
+            return "vendor-react";
+          }
+          if (id.includes("node_modules/")) {
+            return "vendor-libs";
+          }
+          if (id.includes("/src/data/")) {
+            return "data";
+          }
         },
       },
     },
+    chunkSizeWarningLimit: 1000,
   },
   server: {
     port: 5173,
