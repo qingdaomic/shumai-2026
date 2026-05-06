@@ -2744,7 +2744,7 @@ function VideoSection({topicCode, videos=[], title="📺 视频讲解"}) {
 /* ════════════════════════════════════════════════════════════
    PAGE: TOPIC DETAIL
 ════════════════════════════════════════════════════════════ */
-function PageDetail({topicId,mastered,onToggle,onNav,wrongSet,addWrong,removeWrong}) {
+function PageDetail({topicId,mastered,onToggle,onNav,prevView="modules",wrongSet,addWrong,removeWrong}) {
   const {isMobile}=useBP();
   const t=TOPIC_MAP[topicId];
   const [openSol,setOpenSol]=useState(null);
@@ -2788,10 +2788,10 @@ function PageDetail({topicId,mastered,onToggle,onNav,wrongSet,addWrong,removeWro
 
   return(
     <div style={{padding:isMobile?12:28,maxWidth:920,margin:"0 auto"}}>
-      <button onClick={()=>onNav("modules")}
+      <button onClick={()=>onNav(prevView)}
         style={{background:"none",border:`1px solid ${C.border}`,color:C.muted,
           padding:"5px 14px",borderRadius:6,cursor:"pointer",fontSize:16,marginBottom:20}}>
-        ← 返回模块
+        ← 返回
       </button>
 
       {/* Header */}
@@ -7941,6 +7941,7 @@ export default function App() {
     }catch{ return "home"; }
   });
   const [detailId,setDetailId]=useState(null);
+  const [prevView,setPrevView]=useState("home");
   const bp = useWindowSize();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -8113,8 +8114,10 @@ export default function App() {
   const keyPlaceholder = isDeepSeek ? "sk-xxxx DeepSeek Key" : "豆包 API Key（火山引擎）";
 
   const navigate=useCallback((v,tid=null)=>{
-    if(tid){setDetailId(tid);setView("detail");}
-    else setView(v);
+    if(tid){
+      setView(cv=>{if(cv!=="detail")setPrevView(cv);return"detail";});
+      setDetailId(tid);
+    } else setView(v);
     setSidebarOpen(false);
   },[]);
 
@@ -8122,7 +8125,7 @@ export default function App() {
   useEffect(()=>{
     const handler=(e)=>{
       const {v,tid}=e.detail||{};
-      if(v&&tid){setDetailId(tid);setView("detail");}
+      if(v&&tid){setView(cv=>{if(cv!=="detail")setPrevView(cv);return"detail";});setDetailId(tid);}
       else if(v){setView(v);}
     };
     window.addEventListener('shumai-nav',handler);
@@ -8553,7 +8556,7 @@ export default function App() {
             addWrong={addWrong} removeWrong={removeWrong}
             basicWrongSet={basicWrongSet} addBasicWrong={addBasicWrong} removeBasicWrong={removeBasicWrong}/>}
           {view==="detail"&&<PageDetail topicId={detailId} mastered={mastered} onToggle={toggleM}
-            onNav={navigate} wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
+            onNav={navigate} prevView={prevView} wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
           {view==="methods"&&<PageMethods onNav={navigate}/>}
           {view==="practice"&&<PagePractice wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
           {view==="wrong"&&<ErrorBoundary label="错题本"><PageWrong wrongSet={wrongSet} removeWrong={removeWrong} mastered={mastered} onNav={navigate} basicWrongSet={basicWrongSet} removeBasicWrong={removeBasicWrong}/></ErrorBoundary>}
