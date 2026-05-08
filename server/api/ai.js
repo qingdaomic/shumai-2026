@@ -9,6 +9,7 @@ import {
   buildVoiceScriptPrompt,
   buildStudentContext,
 } from '../prompts/tutor.js';
+import { buildAiSkillFallback, prepareAiSkillTutoring } from '../services/ai-skill.js';
 
 const router = Router();
 
@@ -185,6 +186,68 @@ router.post('/chat', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('❌ AI chat:', err.message);
     res.status(500).json({ error: 'AI 服务暂时不可用' });
+  }
+});
+
+// POST /api/ai/skill — 使用教学 Skill 的最小 AI 回答
+router.post('/skill', authMiddleware, async (req, res) => {
+  try {
+    const { question } = req.body;
+    const questionText = typeof question === 'string' ? question : question?.content;
+    if (!questionText?.trim()) return res.status(400).json({ error: '缺少问题内容' });
+
+    const profile = await getStudentProfile(req.user.id);
+    const skillInput = { ...req.body, question: questionText };
+    const prepared = await prepareAiSkillTutoring(skillInput, profile);
+
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return res.json({
+        ok: true,
+        answer: buildAiSkillFallback({
+          skill: prepared.skill,
+          params: skillInput,
+          reason: 'AI Key 未配置',
+        }),
+        skill: prepared.skill,
+        source: prepared.source,
+        reason: prepared.reason,
+        fallback: true,
+      });
+    }
+
+    const completion = await deepseek.chat.completions.create({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: prepared.systemPrompt },
+        { role: 'user', content: prepared.userPrompt },
+      ],
+      max_tokens: 500,
+      temperature: 0.55,
+    });
+
+    res.json({
+      ok: true,
+      answer: completion.choices[0]?.message?.content || '',
+      skill: prepared.skill,
+      source: prepared.source,
+      reason: prepared.reason,
+      fallback: false,
+    });
+  } catch (err) {
+    console.error('❌ AI skill:', err.message);
+    const questionText = typeof req.body?.question === 'string' ? req.body.question : req.body?.question?.content;
+    res.json({
+      ok: true,
+      answer: buildAiSkillFallback({
+        skill: null,
+        params: { ...(req.body || {}), question: questionText || req.body?.message || '' },
+        reason: 'AI 服务暂时不可用',
+      }),
+      skill: null,
+      source: 'fallback',
+      reason: 'AI 服务暂时不可用，已返回本地降级提示',
+      fallback: true,
+    });
   }
 });
 
