@@ -201,6 +201,9 @@ V4 目标：
 - [x] **V4.31** schema / 数据库变更拆分计划：拆清 `server/schema.sql` 中学习计划、角色、微信上下文、资源统计、TTS 用量等能力边界，形成 `文档/V4.31数据库变更拆分计划.md`，不提交不部署不改数据库
 - [x] **V4.32** SKE-1 最小 migration 与种子 Skill 草案：新增独立 `server/migrations/20260508_ske_minimal.sql` 草案与 `server/seeds/prompt_skills_seed.json` 41 条初中数学种子 Skill，不执行 SQL、不改 `server/schema.sql`、不部署
 - [x] **V4.33** SKE-1 推荐 API 与事件记录最小实现：新增 `server/services/prompt-skills.js` 与 `server/api/skills.js`，支持推荐 3 条 Skill、记录 impression / click、数据库不可用时 seed fallback；不挂载、不部署、不执行 SQL
+- [x] **V4.34** 提交 V4.31-V4.33 SKE 草案与最小 API：已将 SKE migration、seed、service/API 与阶段文档形成干净 commit `554828f`，未提交 `server/index.js` / `server/schema.sql`
+- [x] **V4.35** 推送 SKE 最小后端骨架到 GitHub：已将 `554828f feat: add minimal SKE skill recommendation backend` 推送到 `origin/main`，未部署、未服务器操作、未重启 PM2
+- [x] **V4.36** `/api/skills` 本地挂载验证：新增 `server/scripts/verify-skills-api.js` 临时本地验证入口，不改 `server/index.js`；已验证 `/recommend` seed fallback 返回 3 条 Skill，`/event` impression / click 在数据库未迁移时返回 `stored:false`
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
@@ -403,6 +406,20 @@ V4 目标：
 > - 本阶段没有修改 `server/index.js`，没有挂载 `/api/skills`，没有执行 SQL，未部署
 > - 已运行 `node --check server/services/prompt-skills.js`、`node --check server/api/skills.js`，均通过；seed fallback 验证返回 3 条 Skill；`git diff --check` 通过
 > - 已新增记录：`文档/V4.33-SKE1推荐API与事件记录实现记录.md`
+>
+> V4.34 / V4.35 当前结论：
+> - 已创建并推送 `554828f feat: add minimal SKE skill recommendation backend`
+> - 提交范围只包含 SKE 最小 migration、41 条种子 Skill、`server/services/prompt-skills.js`、`server/api/skills.js`、`tasks.md`、建设记录和 V4.31-V4.33 文档
+> - 没有提交 `server/index.js`、`server/schema.sql`、TTS / ASR、部署脚本、动画、study-plan、SVG、微信相关文件
+> - 未部署、未服务器操作、未重启 PM2、未执行 SQL、未修改数据库
+>
+> V4.36 当前结论：
+> - `server/index.js` 仍按 V4.28 / V4.31 判定为高风险混合文件，本阶段不直接修改、不提交
+> - 新增本地临时验证脚本：`server/scripts/verify-skills-api.js`
+> - 脚本创建临时 Express app，将 `skillsRouter` 挂载到 `/api/skills`，使用本地测试 JWT 调用接口，结束后自动关闭
+> - `/api/skills/recommend` 本地验证返回 200，`source: seed`，返回 3 条 Skill：`math_topic_quadratic_function_breakthrough_001`、`math_topic_function_image_reading_001`、`math_common_hint_first_step_001`
+> - `/api/skills/event` 的 `impression` 与 `click` 均返回 200、`ok:true`、`stored:false`，说明数据库未迁移时 no-op 降级正常
+> - 已运行 `node --check server/scripts/verify-skills-api.js`、`node --check server/api/skills.js`、`node --check server/services/prompt-skills.js`，均通过
 
 ### W1. 微信 ClawBot 集成 ⭐⭐⭐
 
