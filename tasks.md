@@ -93,7 +93,7 @@ V4 目标：
 - [~] **SKE-1** 数据库结构：`prompt_skills` + `prompt_skill_events`，并加入 30-50 条种子 Skill（V4.32 已完成最小 migration 草案与 41 条种子 Skill 草案，尚未执行 SQL / 上线）
 - [~] **SKE-2** 后端推荐 API：`/api/skills/recommend` + `/api/skills/event`（V4.33 已实现 service/API 文件与 seed fallback，尚未挂载 `server/index.js`，未部署）
 - [~] **SKE-3** AI Skill 调用：新增 `/api/ai/skill`，组合学生画像、题目信息、Skill 内容与现有树脉学长提示词（V4.41 已完成最小后端实现，尚未 push / 部署 / 前端接入）
-- [ ] **SKE-4** 题目页引导气泡与提问斜杠：题目教练场显示“你可以这样问”，输入 `/` 弹出 3-5 条动态提问词，点击后调用 AI，并记录展示 / 点击 / 有帮助
+- [~] **SKE-4** 题目页引导气泡与提问斜杠：题目教练场输入 `/` 已弹出 3-5 条动态提问词，点击后调用 AI Skill，并记录 impression / click；外显“你可以这样问”和有帮助反馈后续补齐
 - [ ] **SKE-4.1** 提问斜杠权重回流：根据学生基础、错因、知识点、题型和历史点击效果，动态调整提问词推荐顺序
 - [ ] **SKE-4.2** 树脉搜索接入 SKE：搜索知识点、题目、方法、错因、真题和 AI 问法，结果不只是资料列表，而是回到补法、题组和今日任务
 - [ ] **SKE-5** 后台 Skill 管理：管理端新增教学 Skill tab，支持列表、筛选、启停、权重、基础统计
@@ -212,9 +212,9 @@ V4 目标：
 - [x] **V4.40** 推送 SKE 路由挂载 commit 到 GitHub：已将 `ee4259a feat: mount SKE skills API route` 推送到 `origin/main`，只包含 `/api/skills` 两行挂载与对应文档，未部署、未服务器操作
 - [x] **V4.41** SKE-1C `/api/ai/skill` 最小实现：新增 AI Skill 服务层与 `POST /api/ai/skill`，支持指定 Skill、推荐 Skill 和 AI 不可用 fallback；不 push、不部署、不改数据库
 - [x] **V4.42** 本地验证 `/api/ai/skill`：新增本地验证脚本，覆盖指定 Skill、自动推荐 Skill、缺参错误和未知 topic fallback；不 push、不部署、不改数据库
-- [ ] **V4.43** 推送 V4.41-V4.42 干净 commit 到 GitHub：只推送 SKE roadmap、AI Skill endpoint 和本地验证脚本，不部署、不服务器操作
-- [ ] **V4.44** 提问斜杠产品设计：定义“输入 `/` 出现 3-5 条动态提问词”的交互、文案、数据结构和权重逻辑
-- [ ] **V4.45** 题目页提问斜杠前端最小版：在题目教练场输入框内触发下拉式推荐，不做卷帘式或瀑布式首版
+- [x] **V4.43** 推送 V4.41-V4.42 干净 commit 到 GitHub：已将 SKE roadmap、AI Skill endpoint 和本地验证脚本推送到 `origin/main`，未部署、未服务器操作
+- [x] **V4.44** 提问斜杠产品设计：新增 `文档/V4.44提问斜杠产品设计与交互规格.md`，明确输入 `/` 触发 3-5 条下拉式动态提问词，点击后直接发送
+- [x] **V4.45** 题目页提问斜杠前端最小版：在题目教练场输入框内触发下拉式推荐，首版抽 `SlashPromptMenu`，不做卷帘式或瀑布式
 - [ ] **V4.46** 提问词事件记录与权重回流：接入 impression / click / ai_used / helpful，形成学生个性化提问词排序
 - [ ] **V4.47** 树脉搜索产品设计：定义搜索知识点、题目、方法、错因、真题、AI 问法和学习路径的分组结果
 - [ ] **V4.48** 树脉搜索最小版：先支持数学知识点、题目、方法、真题搜索，结果能回到知识树、题目教练场和今日任务
