@@ -90,8 +90,8 @@ V4 目标：
 > 实施交接卡：`文档/任务交接卡-SKE教学Skill引擎.md`
 
 - [x] **SKE-0** 战略与商业模式文档沉淀：免费共建、数据生长、智力生长、提示词护城河、模型路由与 AI 点数
-- [ ] **SKE-1** 数据库结构：`prompt_skills` + `prompt_skill_events`，并加入 30-50 条种子 Skill
-- [ ] **SKE-2** 后端推荐 API：`/api/skills/recommend` + `/api/skills/event`
+- [~] **SKE-1** 数据库结构：`prompt_skills` + `prompt_skill_events`，并加入 30-50 条种子 Skill（V4.32 已完成最小 migration 草案与 41 条种子 Skill 草案，尚未执行 SQL / 上线）
+- [~] **SKE-2** 后端推荐 API：`/api/skills/recommend` + `/api/skills/event`（V4.33 已实现 service/API 文件与 seed fallback，尚未挂载 `server/index.js`，未部署）
 - [ ] **SKE-3** AI Skill 调用：新增 `/api/ai/skill`，组合学生画像、题目信息、Skill 内容与现有树脉学长提示词
 - [ ] **SKE-4** 题目页引导气泡：题目教练场显示“你可以这样问”，点击后调用 AI，并记录展示 / 点击 / 有帮助
 - [ ] **SKE-5** 后台 Skill 管理：管理端新增教学 Skill tab，支持列表、筛选、启停、权重、基础统计
@@ -197,6 +197,10 @@ V4 目标：
 - [x] **V4.27** 后端变更拆分与风险归档：盘点剩余后端、schema、TTS/ASR、动画、部署脚本、SKE 前置资料和私密目录边界，形成 `文档/V4.27后端变更拆分报告.md`，不提交不部署
 - [x] **V4.28** 后端稳定能力逐文件审查与安全提交计划：审查 `server/index.js`、`server/api/*`、`server/services/*`、`server/bot.js`、`server/schema.sql`、`deploy/*`、`public/animations/`、`dist-singlefile/`，形成 `文档/V4.28后端稳定能力审查报告.md`，不提交不部署
 - [x] **V4.29** 后端低风险稳定提交执行：只提交 `server/api/ai.js`、`server/prompts/tutor.js`、`server/api/teacher.js` 三个低风险后端文件，并用独立 docs commit 记录 V4.27-V4.29 边界；不 push、不部署、不服务器操作
+- [x] **V4.30** 推送 V4.29 干净提交到 GitHub：已将 `c4d06be` 与 `0546eb0` 推送到 `origin/main`，未部署、未服务器操作、未重启 PM2
+- [x] **V4.31** schema / 数据库变更拆分计划：拆清 `server/schema.sql` 中学习计划、角色、微信上下文、资源统计、TTS 用量等能力边界，形成 `文档/V4.31数据库变更拆分计划.md`，不提交不部署不改数据库
+- [x] **V4.32** SKE-1 最小 migration 与种子 Skill 草案：新增独立 `server/migrations/20260508_ske_minimal.sql` 草案与 `server/seeds/prompt_skills_seed.json` 41 条初中数学种子 Skill，不执行 SQL、不改 `server/schema.sql`、不部署
+- [x] **V4.33** SKE-1 推荐 API 与事件记录最小实现：新增 `server/services/prompt-skills.js` 与 `server/api/skills.js`，支持推荐 3 条 Skill、记录 impression / click、数据库不可用时 seed fallback；不挂载、不部署、不执行 SQL
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
@@ -366,6 +370,39 @@ V4 目标：
 > - 本阶段不提交 `server/index.js`、`server/schema.sql`、`server/package.json`、`server/api/wechat.js`、`server/bot.js`、`server/api/parent.js`、`server/api/study-plan.js`、`server/services/daily.js`、`server/api/admin.js`、`server/api/svg.js`、TTS / ASR、动画、部署脚本、`public/animations/`、`dist-singlefile/`
 > - 已新增记录：`文档/V4.29后端低风险稳定提交记录.md`
 > - V4.29 不 push、不部署、不服务器操作、不重启 PM2、不改数据库、不删除文件
+>
+> V4.30 当前结论：
+> - 用户在本机终端成功执行 `git push origin main`
+> - 已推送两个 V4.29 干净提交：`c4d06be feat: refine low-risk AI tutoring backend modules`、`0546eb0 docs: record backend review and low-risk commit boundary`
+> - 推送后 `main...origin/main` 不再 ahead
+> - 未部署、未服务器操作、未重启 PM2、未改数据库
+>
+> V4.31 当前结论：
+> - 已审查 `server/schema.sql`、`server/index.js`、`server/api/study-plan.js`、`server/services/daily.js`、`server/api/parent.js`、`server/api/admin.js`、`server/api/svg.js`、`server/api/wechat.js`、`server/bot.js`
+> - 当前 schema diff 混有 `study_plans`、`users.exam_date`、`users.role`、微信上下文字段、`resource_billing`、`tts_usage` 等多条能力线，不适合整体提交或直接上线
+> - `question_svgs` 表在当前 HEAD 已存在，本轮主要风险是 `server/api/svg.js` 的文件缓存与直出能力，需单独审查
+> - SKE-1 最小数据库范围应单独设计 `prompt_skills` 与 `prompt_skill_events`，不依赖 study-plan、TTS、SVG、微信上下文或动画
+> - 建议后续新增独立 migration 文件，而不是继续依赖后端启动时执行整份 `schema.sql`
+> - 已新增计划：`文档/V4.31数据库变更拆分计划.md`
+> - V4.31 全程没有 `git add`、没有 `git commit`、没有 `git push`、没有服务器操作、没有部署、没有重启 PM2、没有改数据库、没有执行 SQL、没有删除文件
+>
+> V4.32 当前结论：
+> - 已新增 SKE-1 独立 migration 草案：`server/migrations/20260508_ske_minimal.sql`
+> - migration 只包含 `prompt_skills`、`prompt_skill_events` 和必要索引，不混入 study-plan、TTS / ASR、SVG、微信上下文、动画 cron
+> - 已新增种子 Skill 草案：`server/seeds/prompt_skills_seed.json`
+> - 种子 Skill 共 41 条，JSON 解析通过，`skill_key` 无重复；聚焦初中数学，不做英语
+> - 覆盖基础知识、基础题、题组训练、压轴题组、10 年中考真题、23 种方法、向上提升、向下补差、错因复盘等树脉数学根基
+> - 已新增报告：`文档/V4.32-SKE1最小migration与种子Skill草案.md`
+> - V4.32 全程没有执行 SQL、没有连接数据库、没有改线上数据库、没有部署、没有服务器操作、没有重启 PM2、没有 `git add / commit / push`
+>
+> V4.33 当前结论：
+> - 已新增 `server/services/prompt-skills.js`，实现数据库优先、seed 降级的 Skill 推荐服务
+> - 已新增 `server/api/skills.js`，提供 `POST /recommend` 与 `POST /event` Router 草案
+> - 推荐 API 目标返回 3 条 Skill；事件 API 仅支持 `impression` / `click`
+> - 数据库不可用或表未迁移时，推荐接口读取 `server/seeds/prompt_skills_seed.json`，事件记录降级为 no-op 并返回 `stored:false`
+> - 本阶段没有修改 `server/index.js`，没有挂载 `/api/skills`，没有执行 SQL，未部署
+> - 已运行 `node --check server/services/prompt-skills.js`、`node --check server/api/skills.js`，均通过；seed fallback 验证返回 3 条 Skill；`git diff --check` 通过
+> - 已新增记录：`文档/V4.33-SKE1推荐API与事件记录实现记录.md`
 
 ### W1. 微信 ClawBot 集成 ⭐⭐⭐
 
