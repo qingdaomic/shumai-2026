@@ -204,6 +204,9 @@ V4 目标：
 - [x] **V4.34** 提交 V4.31-V4.33 SKE 草案与最小 API：已将 SKE migration、seed、service/API 与阶段文档形成干净 commit `554828f`，未提交 `server/index.js` / `server/schema.sql`
 - [x] **V4.35** 推送 SKE 最小后端骨架到 GitHub：已将 `554828f feat: add minimal SKE skill recommendation backend` 推送到 `origin/main`，未部署、未服务器操作、未重启 PM2
 - [x] **V4.36** `/api/skills` 本地挂载验证：新增 `server/scripts/verify-skills-api.js` 临时本地验证入口，不改 `server/index.js`；已验证 `/recommend` seed fallback 返回 3 条 Skill，`/event` impression / click 在数据库未迁移时返回 `stored:false`
+- [x] **V4.37** 提交 SKE 本地验证脚本与记录：已创建 `0adcf09 test: add local verification for SKE skills API`，只包含验证脚本、V4.36 记录、tasks 和建设记录
+- [x] **V4.38** 推送 SKE 本地验证 commit 到 GitHub：已将 `0adcf09` 推送到 `origin/main`，未部署、未服务器操作、未重启 PM2
+- [x] **V4.39** `/api/skills` 干净挂载实现与本地验证：只在 `server/index.js` 中挂载 `skillsRouter`，通过部分暂存避免带入 TTS / ASR、study-plan、动画 cron 等已有脏改；本地验证继续通过 seed fallback 和事件 no-op
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
@@ -420,6 +423,19 @@ V4 目标：
 > - `/api/skills/recommend` 本地验证返回 200，`source: seed`，返回 3 条 Skill：`math_topic_quadratic_function_breakthrough_001`、`math_topic_function_image_reading_001`、`math_common_hint_first_step_001`
 > - `/api/skills/event` 的 `impression` 与 `click` 均返回 200、`ok:true`、`stored:false`，说明数据库未迁移时 no-op 降级正常
 > - 已运行 `node --check server/scripts/verify-skills-api.js`、`node --check server/api/skills.js`、`node --check server/services/prompt-skills.js`，均通过
+>
+> V4.37 / V4.38 当前结论：
+> - 已创建并推送 `0adcf09 test: add local verification for SKE skills API`
+> - 提交范围只包含 `server/scripts/verify-skills-api.js`、`文档/V4.36-SKE1本地挂载验证记录.md`、`tasks.md`、`文档/树脉系统建设记录.md`
+> - 未提交 `server/index.js`、`server/schema.sql`、TTS / ASR、study-plan、SVG、微信、部署脚本、动画、私密目录
+> - 未部署、未服务器操作、未重启 PM2、未执行 SQL、未修改数据库
+>
+> V4.39 当前结论：
+> - 已在 `server/index.js` 中做 `/api/skills` 最小挂载：引入 `skillsRouter`，并 `app.use('/api/skills', skillsRouter)`
+> - 因 `server/index.js` 工作区已有 TTS / ASR、study-plan、动画 cron 等脏改，本阶段只允许把 `/api/skills` 两行作为干净变更进入提交
+> - 没有启动真实 `server/index.js`，避免触发未拆分的动画 cron 或其它实验能力
+> - 使用 `server/scripts/verify-skills-api.js` 再次验证：`recommend` 返回 3 条 seed Skill，`impression` / `click` 均返回 `ok:true`、`stored:false`
+> - 已运行 `node --check server/index.js`、`node --check server/api/skills.js`、`node --check server/services/prompt-skills.js`，均通过
 
 ### W1. 微信 ClawBot 集成 ⭐⭐⭐
 
