@@ -1,4 +1,4 @@
-// 数脉 Service Worker — 离线缓存
+// 树脉 Service Worker — 离线缓存
 const CACHE_NAME = 'shumai-v1';
 const PRECACHE_URLS = [
   '/',

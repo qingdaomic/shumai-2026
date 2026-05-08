@@ -13,8 +13,8 @@ const THEMES = {
   green: {bg:"#05120a",s1:"#091a0e",s2:"#0e2214",s3:"#132d1a",border:"#1b4024",border2:"#234f2e",fg:"#cceedd",text:"#cceedd",muted:"#489966",dim:"#0e2014"},
   sepia: {bg:"#191510",s1:"#221c13",s2:"#2b2318",s3:"#34291d",border:"#4c3c28",border2:"#5e4b33",fg:"#e8d4af",text:"#e8d4af",muted:"#9a8060",dim:"#1e160e"},
 };
-// 应用已保存的主题（在任何组件渲染前执行）
-try{const _t=JSON.parse(localStorage.getItem("shumai_v7")||"{}").themeId;if(_t&&THEMES[_t])Object.assign(C,THEMES[_t]);}catch{}
+// V4.13 保留用户可调主题，默认浅色，设置中可切换深色、护眼、暖棕。
+try{const _t=JSON.parse(localStorage.getItem("shumai_v7")||"{}").themeId||"light";Object.assign(C,THEMES[_t]||THEMES.light);}catch{Object.assign(C,THEMES.light);}
 
 /* ── Responsive Breakpoint System ────────────────────────────
    Breakpoints: Mobile < 640px | Tablet 640-1023px | Desktop ≥ 1024px
@@ -33,10 +33,19 @@ function useWindowSize() {
 }
 
 const DOM = { algebra:{name:"数与代数",color:C.alg}, geometry:{name:"图形与几何",color:C.geo}, stats:{name:"统计与概率",color:C.sta} };
+const STAGE_ORDER = ["小学","初中","高中"];
+const inferStageFromGrade = (gradeLabel="") => {
+  if(String(gradeLabel).includes("小")) return "小学";
+  if(String(gradeLabel).includes("高")) return "高中";
+  return "初中";
+};
 
 const Tag = ({c=C.muted,children,sm})=>(
   <span style={{padding:sm?"1px 7px":"2px 10px",borderRadius:20,fontSize:sm?10:11,fontWeight:600,
-    background:c+"1a",color:c,border:`1px solid ${c}30`}}>{children}</span>
+    background:c+"1a",color:c,border:`1px solid ${c}30`,
+    display:"inline-flex",alignItems:"center",maxWidth:"100%",
+    minWidth:0,whiteSpace:"normal",overflowWrap:"anywhere",wordBreak:"break-word",
+    lineHeight:1.35,textAlign:"left"}}>{children}</span>
 );
 const Bar = ({v,color,h=4})=>(
   <div style={{flex:1,height:h,borderRadius:h,background:C.dim,overflow:"hidden"}}>
@@ -76,6 +85,48 @@ const BtnPill = ({label,active,onClick,color=C.alg,badge})=>(
       fontWeight:700,padding:"1px 5px",borderRadius:10}}>{badge}</span>}
   </button>
 );
+
+const StageAccessStrip = ({currentStage="初中", subject="数学"}) => {
+  const {isMobile}=useBP();
+  return (
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:isMobile?"1fr":"repeat(3,minmax(0,1fr))",
+      gap:6,
+      width:"100%",
+      maxWidth:"100%",
+      minWidth:0,
+    }}>
+      {STAGE_ORDER.map(stage=>{
+        const open = stage === currentStage;
+        return(
+          <div key={`${subject}-${stage}`} style={{
+            padding:"8px 10px",borderRadius:10,
+            background:open?C.ok+"12":C.s2,
+            border:`1px solid ${open?C.ok+"35":C.border}`,
+            minHeight:54,
+            minWidth:0,
+          }}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,minWidth:0}}>
+              <span style={{fontSize:13,fontWeight:800,color:open?C.ok:C.muted,whiteSpace:"nowrap"}}>{stage}</span>
+              <span style={{fontSize:11,color:open?C.ok:C.dim,whiteSpace:"nowrap"}}>{open?"已开放":"受限"}</span>
+            </div>
+            <div style={{fontSize:11,color:C.muted,marginTop:5,lineHeight:1.4,overflowWrap:"anywhere"}}>
+              {open?`${subject}${stage}入口`:"按账号学段开放"}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+const mobileWrapText = {
+  minWidth:0,
+  maxWidth:"100%",
+  whiteSpace:"normal",
+  overflowWrap:"anywhere",
+  wordBreak:"break-all",
+};
 
 /* ════════════════════════════════════════════════════════════
    SERVICE LAYER — 数据访问抽象层
@@ -340,6 +391,134 @@ async function callAI(system, user, history=[]) {
   }
 }
 
+function normalizeTutorQuestion(q={}) {
+  return {
+    id: q.id,
+    content: q.content || q.title || "",
+    answer: q.answer || "",
+    sol: q.sol || q.solution || "",
+    error: q.error || q.trap || "",
+    topic: q.topic || "",
+    methods: q.methods || [],
+    type: q.type || "",
+    diff: q.diff || "",
+    yr: q.yr || q.year || "",
+    no: q.no || "",
+    score: q.score || "",
+  };
+}
+
+function buildTutorSystem(q, topicName, mode="explain") {
+  const nq=normalizeTutorQuestion(q);
+  const methodNames=(nq.methods||[]).map(mid=>METHODS.find(m=>m.id===mid)?.name).filter(Boolean).join("、")||"未标注";
+  const base=`你是树脉学长，一位很会带初中生开窍的数学学长。回答要像真人辅导：先抓题眼，再拆思路，再提醒易错，不要像标准答案复读。
+
+## 题目上下文
+- 知识点：${topicName||"本题"}
+- 解题方法：${methodNames}
+- 题型：${nq.type||"未标注"}，难度：${nq.diff||"未标注"}
+- 题目：${nq.content}
+- 答案：${nq.answer||"无"}
+- 参考解析：${nq.sol||"无"}
+- 易错点：${nq.error||"无"}`;
+  const task=mode==="hint"
+    ? "学生还没完全做出来。只给下一步提示，不要直接给完整答案；先问一个关键问题，引导他自己走出第一步。"
+    : mode==="wrong"
+    ? "学生在看错题。请先判断错因，再讲清正确入口，最后给防错提醒。"
+    : mode==="topic"
+    ? "学生在学知识点。请围绕概念、公式、考法、易错点总结。"
+    : "学生点了问学长。请讲这道题为什么这样想，而不只是怎么算。";
+  return `${base}
+
+## 回答要求
+${task}
+1. 第一段必须点出“题眼/信号词/关键结构”。
+2. 用①②③分步讲，步骤要具体到怎么变形、为什么能这样做。
+3. 至少给一个“以后遇到同类题就这样想”的迁移口诀。
+4. 学生追问时，要结合上面的题目上下文继续回答，不要丢题。
+5. 180字以内，不用Markdown，不用LaTeX源码。`;
+}
+
+async function recognizeSpeechBlob(blob) {
+  const token = window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+  if (!token) throw new Error("请先登录后使用语音追问");
+  const form = new FormData();
+  form.append("audio", blob, "speech.webm");
+  const res = await fetch(`${BACKEND_URL}/api/asr/recognize`, {
+    method:"POST",
+    headers:{"Authorization":`Bearer ${token}`},
+    body:form,
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||"语音识别失败");
+  return data.text || "";
+}
+
+function startRecorder({onText,onError,onState}) {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    onError("当前浏览器不支持录音上传，请手动输入");
+    return null;
+  }
+  let chunks=[];
+  let stream=null;
+  let recorder=null;
+  let stopped=false;
+
+  navigator.mediaDevices.getUserMedia({ audio:true }).then(s=>{
+    stream=s;
+    recorder=new MediaRecorder(stream);
+    recorder.ondataavailable=e=>{ if(e.data?.size) chunks.push(e.data); };
+    recorder.onerror=()=>onError("录音失败，请重试");
+    recorder.onstop=async()=>{
+      stream?.getTracks()?.forEach(t=>t.stop());
+      onState(false);
+      try {
+        const blob=new Blob(chunks,{type:recorder.mimeType||"audio/webm"});
+        const text=await recognizeSpeechBlob(blob);
+        if(text.trim()) onText(text.trim());
+        else onError("没有识别到文字，请再说一遍");
+      } catch(e) {
+        onError(e.message||"语音识别失败，请手动输入");
+      }
+    };
+    recorder.start();
+    onState(true);
+  }).catch(e=>{
+    onState(false);
+    onError(e?.name==="NotAllowedError"?"请允许麦克风权限":"无法打开麦克风，请检查浏览器权限");
+  });
+
+  const api={
+    stop(){
+      if(stopped) return;
+      stopped=true;
+      try{ if(recorder&&recorder.state!=="inactive") recorder.stop(); }
+      catch{ stream?.getTracks()?.forEach(t=>t.stop()); onState(false); }
+    },
+  };
+  setTimeout(()=>api.stop(),20000);
+  return api;
+}
+
+async function askTutorAI({question, topicName, mode="explain", userMsg="请讲解", history=[]}) {
+  const token = window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+  const endpoint = mode==="wrong" ? "wrong-analysis" : mode==="topic" ? "topic-summary" : "explain";
+  if (token && mode!=="topic") {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ai/${endpoint}`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+        body:JSON.stringify({question:normalizeTutorQuestion(question),topicName,wrongCount:1,message:userMsg,history}),
+      });
+      if (res.ok) {
+        const data=await res.json();
+        if (data?.text) return data.text;
+      }
+    } catch {}
+  }
+  return callAI(buildTutorSystem(question,topicName,mode), userMsg, history);
+}
+
 // 兼容旧调用
 const callClaude = callAI;
 
@@ -397,33 +576,68 @@ async function fetchMSTTS(text) {
 
 function speakText(text, onStart, onEnd) {
   stopSpeak();
+  fetchServerTTS(text).then(url => {
+    if (url) playAudioUrl(url, onStart, onEnd, false, text);
+    else speakTextLegacy(text, onStart, onEnd);
+  }).catch(() => speakTextLegacy(text, onStart, onEnd));
+}
+
+async function fetchServerTTS(text) {
+  const token = window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+  if (!token) return null;
+  const res = await fetch(`${BACKEND_URL}/api/tts/speak`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+    body: JSON.stringify({ text, voice: "default", speed: 1, dialect: "zh-CN" }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data?.ok && data.url ? `${BACKEND_URL}${data.url}` : null;
+}
+
+function playAudioUrl(url, onStart, onEnd, revoke=true, fallbackText="") {
+  const audio = new Audio(url);
+  audio.preload = "auto";
+  window.__TTS_AUDIO__ = audio;
+  const begin = () => {
+    audio.oncanplay = null;
+    audio.oncanplaythrough = null;
+    window.__TTS_SPEAKING__ = true;
+    window.__TTS_PAUSED__ = false;
+    onStart && onStart();
+    audio.play().catch(() => {
+      if (revoke) URL.revokeObjectURL(url);
+      window.__TTS_AUDIO__ = null;
+      fallbackSpeak(fallbackText, onStart, onEnd);
+    });
+  };
+  audio.oncanplay = begin;
+  audio.oncanplaythrough = begin;
+  audio.onended = () => {
+    window.__TTS_SPEAKING__ = false;
+    window.__TTS_PAUSED__ = false;
+    if (revoke) URL.revokeObjectURL(url);
+    window.__TTS_AUDIO__ = null;
+    onEnd && onEnd();
+  };
+  audio.onerror = () => {
+    window.__TTS_SPEAKING__ = false;
+    window.__TTS_PAUSED__ = false;
+    window.__TTS_AUDIO__ = null;
+    if (revoke) URL.revokeObjectURL(url);
+    fallbackText ? fallbackSpeak(fallbackText, onStart, onEnd) : onEnd && onEnd();
+  };
+  audio.load();
+  return audio;
+}
+
+function speakTextLegacy(text, onStart, onEnd) {
   fetchMSTTS(text).then(url => {
     if (url) {
-      const audio = new Audio(url);
-      window.__TTS_AUDIO__ = audio;
-      audio.oncanplaythrough = () => {
-        window.__TTS_SPEAKING__ = true;
-        onStart && onStart();
-        audio.play().catch(() => {
-          // 自动播放被拦截（常见于Safari）→ 降级
-          URL.revokeObjectURL(url);
-          window.__TTS_AUDIO__ = null;
-          fallbackSpeak(text, onStart, onEnd);
-        });
-      };
-      audio.onended = () => {
-        window.__TTS_SPEAKING__ = false;
-        URL.revokeObjectURL(url);
-        window.__TTS_AUDIO__ = null;
-        onEnd && onEnd();
-      };
-      audio.onerror = () => {
-        window.__TTS_SPEAKING__ = false;
-        window.__TTS_AUDIO__ = null;
-        URL.revokeObjectURL(url);
-        fallbackSpeak(text, onStart, onEnd);
-      };
-      audio.load();
+      playAudioUrl(url, onStart, onEnd, true, text);
     } else {
       fallbackSpeak(text, onStart, onEnd);
     }
@@ -440,9 +654,37 @@ function fallbackSpeak(text, onStart, onEnd) {
   const v = voices.find(v=>v.lang.startsWith("zh-CN")) || voices.find(v=>v.lang.startsWith("zh"));
   if (v) utter.voice = v;
   utter.onstart = ()=>{ window.__TTS_SPEAKING__=true; onStart&&onStart(); };
-  utter.onend = ()=>{ window.__TTS_SPEAKING__=false; onEnd&&onEnd(); };
-  utter.onerror = ()=>{ window.__TTS_SPEAKING__=false; onEnd&&onEnd(); };
+  utter.onend = ()=>{ window.__TTS_SPEAKING__=false; window.__TTS_PAUSED__=false; onEnd&&onEnd(); };
+  utter.onerror = ()=>{ window.__TTS_SPEAKING__=false; window.__TTS_PAUSED__=false; onEnd&&onEnd(); };
   window.speechSynthesis.speak(utter);
+}
+
+function pauseSpeak() {
+  if (window.__TTS_AUDIO__) {
+    window.__TTS_AUDIO__.pause();
+    window.__TTS_PAUSED__ = true;
+    window.__TTS_SPEAKING__ = true;
+    return true;
+  }
+  if (window.speechSynthesis && window.__TTS_SPEAKING__) {
+    window.speechSynthesis.pause();
+    window.__TTS_PAUSED__ = true;
+    return true;
+  }
+  return false;
+}
+
+function resumeSpeak() {
+  if (window.__TTS_AUDIO__ && window.__TTS_PAUSED__) {
+    window.__TTS_AUDIO__.play().then(()=>{ window.__TTS_PAUSED__ = false; }).catch(()=>{});
+    return true;
+  }
+  if (window.speechSynthesis && window.__TTS_PAUSED__) {
+    window.speechSynthesis.resume();
+    window.__TTS_PAUSED__ = false;
+    return true;
+  }
+  return false;
 }
 
 function stopSpeak() {
@@ -452,22 +694,38 @@ function stopSpeak() {
   }
   window.speechSynthesis && window.speechSynthesis.cancel();
   window.__TTS_SPEAKING__ = false;
+  window.__TTS_PAUSED__ = false;
 }
 
 // 生成语音讲解文稿（调用AI）
 async function genVoiceScript(q, topicName) {
-  const system = `你是数脉AI数学老师，用简洁、口语化的中文为初中生讲解错题。
-格式要求：
-1. 先说这道题考的核心知识点（1句）
-2. 指出做错的最常见原因（1句）
-3. 说清楚正确解法的关键步骤（2-3句）
-4. 最后给一个记忆口诀或技巧（1句）
-总字数控制在100字以内，直接口语朗读，不要用标点符号分段，不要说"同学你好"之类的开场白。`;
+  const system = `你是一位中考数学名师，给学生录制短语音。不要朗读标准答案，要讲出高手思维。
+要求：
+1. 开头一句点破题眼：看到什么条件，就该想到什么方法。
+2. 中间两三句讲破局：为什么这样转化，关键一步在哪里。
+3. 必须点出一个常见误区。
+4. 结尾给一句迁移口诀：以后遇到同类题就这样想。
+5. 像老师面对面讲，120到180字，适合朗读，不用LaTeX源码，不说同学你好。`;
   const user = `知识点：${topicName}
 题目：${q.content}
 答案：${q.answer}
-易错点：${q.error}
-请生成语音讲解。`;
+参考解析：${q.sol||"无"}
+易错点：${q.error||"无"}
+请生成一段有启发感的语音讲解。`;
+  try {
+    const token = window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+    if (token) {
+      const res = await fetch(`${BACKEND_URL}/api/ai/voice-script`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+        body:JSON.stringify({question:normalizeTutorQuestion(q),topicName}),
+      });
+      if (res.ok) {
+        const data=await res.json();
+        if(data?.text) return data.text;
+      }
+    }
+  } catch {}
   return await callAI(system, user);
 }
 
@@ -888,422 +1146,1180 @@ const MODULE_CONFIG = [
 /* ════════════════════════════════════════════════════════════
    PAGE: DASHBOARD
 ════════════════════════════════════════════════════════════ */
-function PageHome({mastered,wrongSet,progress,onNav}) {
-  const {isMobile,isTablet}=useBP();
+function PageHome({mastered,wrongSet,onNav}) {
+  const {isMobile}=useBP();
+  const gradeLabel = localStorage.getItem("shumai_grade") || "未设置学段";
+  const currentStage = inferStageFromGrade(gradeLabel);
+  const authUser = (()=>{ try { return JSON.parse(localStorage.getItem("shumai_auth_user")||"null"); } catch { return null; } })();
+  const identityLabel = authUser
+    ? `${authUser.nickname || "同学"} · ${gradeLabel}`
+    : `${gradeLabel} · 游客模式`;
+  const subjectCards=[
+    {
+      title:"数学",
+      badge:"已开放",
+      eyebrow:"Math Coach",
+      desc:"进入后查看数学今日驾驶舱、知识树、错因修复、真题训练和纸质训练单。",
+      color:C.alg,
+      meta:"小学 / 初中 / 高中分阶段开放",
+      action:()=>onNav("math"),
+    },
+    {
+      title:"英语",
+      badge:"规划中",
+      eyebrow:"English Coach",
+      desc:"后续围绕单词、意群、句子、阅读、真题建立独立体系，不套数学结构。",
+      color:C.geo,
+      meta:"初中 / 高中英语专题规划",
+      action:()=>onNav("english"),
+    },
+  ];
+  const sharedItems=[
+    ["AI 私人教练","先判断方向，再进入对应学科路径。"],
+    ["微信 ClawBot","绑定后在微信里接收提醒、发题、沟通。"],
+    ["动态学习计划","目标、测评、时间和完成情况会共同调整路线。"],
+    ["纸质训练闭环","屏幕负责判断，纸面负责稳定步骤。"],
+  ];
+  return(
+    <div style={{padding:isMobile?14:28,maxWidth:isMobile?"100%":1120,margin:"0 auto",width:"100%",minWidth:0,overflowX:"hidden"}}>
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"minmax(0,1fr)":"minmax(0,1.15fr) minmax(0,.85fr)",gap:14,marginBottom:14,minWidth:0,maxWidth:"100%"}}>
+        <div style={{background:C.s1,border:`1px solid ${C.alg}24`,borderRadius:18,
+          padding:isMobile?"22px 18px":"34px 36px",minHeight:isMobile?0:318,minWidth:0,overflow:"hidden"}}>
+          <div style={{fontSize:12,color:C.alg,letterSpacing:isMobile?2:3,textTransform:"uppercase",fontWeight:900,marginBottom:10,...mobileWrapText}}>
+            ShuMai AI Learning OS
+          </div>
+          <h1 style={{margin:"0 0 12px",fontSize:isMobile?34:52,fontWeight:900,color:C.text,letterSpacing:0,lineHeight:1.05,...mobileWrapText}}>
+            树脉
+          </h1>
+          <p style={{margin:0,fontSize:isMobile?15:17,color:C.muted,lineHeight:1.9,...mobileWrapText}}>
+            先选择学科，再由对应 AI 教练告诉学生今天该学什么、为什么学、怎么补、补到哪里算会。
+          </p>
+          <div style={{marginTop:26,padding:isMobile?14:16,borderRadius:14,
+            background:`linear-gradient(135deg,${C.alg}10,${C.geo}0c)`,border:`1px solid ${C.alg}24`,minWidth:0,overflow:"hidden"}}>
+            <div style={{fontSize:12,color:C.purple,fontWeight:900,marginBottom:6,minWidth:0}}>共用 AI 判断</div>
+            <div style={{fontSize:isMobile?18:22,fontWeight:900,color:C.text,lineHeight:1.55,...mobileWrapText}}>
+              先进入数学或英语。总首页只负责分流、身份、微信教练和学习系统说明。
+            </div>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.7,marginTop:8,...mobileWrapText}}>
+              单科的进度、错因、题库、知识树和训练单，进入学科主页后再出现。
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:16,minWidth:0,maxWidth:"100%"}}>
+            <button onClick={()=>onNav("math")}
+              style={{padding:"11px 18px",borderRadius:11,border:"none",background:C.alg,color:"white",
+                fontWeight:900,cursor:"pointer",fontSize:14,minWidth:0}}>
+              进入数学
+            </button>
+            <button onClick={()=>onNav("english")}
+              style={{padding:"11px 18px",borderRadius:11,border:`1px solid ${C.geo}44`,background:C.geo+"10",
+                color:C.geo,fontWeight:900,cursor:"pointer",fontSize:14,minWidth:0}}>
+              查看英语规划
+            </button>
+          </div>
+        </div>
+
+        <aside style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:18,
+          padding:isMobile?18:22,display:"flex",flexDirection:"column",gap:14,minWidth:0,overflow:"hidden"}}>
+          <div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:6}}>学习身份</div>
+            <div style={{fontSize:18,fontWeight:900,color:C.text,...mobileWrapText}}>{identityLabel}</div>
+          </div>
+          <div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>当前学段</div>
+            <StageAccessStrip currentStage={currentStage} subject="树脉" />
+          </div>
+          <div style={{padding:14,borderRadius:14,background:C.s2,border:`1px solid ${C.border}`,minWidth:0,overflow:"hidden"}}>
+            <div style={{fontSize:12,color:C.muted,marginBottom:6}}>微信 AI 教练</div>
+            <div style={{fontSize:14,color:C.text,lineHeight:1.7,...mobileWrapText}}>
+              绑定后，数学和英语的提醒、问答、计划收束都可以进入微信私聊。
+            </div>
+            <button onClick={()=>onNav("me")}
+              style={{marginTop:12,width:"100%",padding:"10px 12px",borderRadius:10,cursor:"pointer",
+                border:`1px solid ${C.geo}35`,background:C.geo+"10",color:C.geo,fontWeight:900,minWidth:0,whiteSpace:"normal",overflowWrap:"anywhere"}}>
+              连接微信 AI 教练
+            </button>
+          </div>
+        </aside>
+      </section>
+
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"minmax(0,1fr)":"repeat(2,minmax(0,1fr))",gap:12,marginBottom:14,minWidth:0,maxWidth:"100%"}}>
+        {subjectCards.map(card=>(
+          <button key={card.title} onClick={card.action}
+            style={{textAlign:"left",padding:isMobile?18:22,borderRadius:16,cursor:"pointer",
+              background:C.s1,border:`1px solid ${card.color}2f`,minHeight:164,minWidth:0,maxWidth:"100%",overflow:"hidden"}}>
+            <div style={{fontSize:12,color:card.color,fontWeight:900,marginBottom:7,minWidth:0,overflowWrap:"anywhere"}}>{card.eyebrow}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:10,minWidth:0,flexWrap:"wrap"}}>
+              <div style={{fontSize:26,fontWeight:900,color:C.text,minWidth:0}}>{card.title}</div>
+              <Tag c={card.color}>{card.badge}</Tag>
+            </div>
+            <div style={{fontSize:14,color:C.muted,lineHeight:1.8,...mobileWrapText}}>{card.desc}</div>
+            <div style={{fontSize:12,color:C.dim,marginTop:10,...mobileWrapText}}>{card.meta}</div>
+            <div style={{fontSize:13,color:card.color,fontWeight:800,marginTop:14,...mobileWrapText}}>进入 {card.title} →</div>
+          </button>
+        ))}
+      </section>
+
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"minmax(0,1fr)":"repeat(4,minmax(0,1fr))",gap:10,minWidth:0,maxWidth:"100%"}}>
+        {sharedItems.map(([title,body])=>(
+          <div key={title} style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16,minWidth:0,overflow:"hidden"}}>
+            <div style={{fontSize:14,fontWeight:950,color:C.text,marginBottom:7,...mobileWrapText}}>{title}</div>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.7,...mobileWrapText}}>{body}</div>
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function PageMathHome({mastered,wrongSet,progress,onNav}) {
+  const {isMobile}=useBP();
   const total=TOPICS.length;
+  const gradeLabel = localStorage.getItem("shumai_grade") || "未设置学段";
+  const currentStage = inferStageFromGrade(gradeLabel);
+  const authUser = (()=>{ try { return JSON.parse(localStorage.getItem("shumai_auth_user")||"null"); } catch { return null; } })();
+  const studyMode = authUser?.role === "teacher" ? "教师视角" : authUser?.role === "parent" ? "家长视角" : "学生视角";
+  const identityLabel = authUser
+    ? `${authUser.nickname || "同学"} · ${gradeLabel}`
+    : `${gradeLabel} · 游客模式`;
   const domStats=Object.entries(DOM).map(([k,d])=>{
     const all=TOPICS.filter(t=>t.domain===k);
-    return {k,d,all,done:all.filter(t=>mastered.has(t.id)).length};
+    const done=all.filter(t=>mastered.has(t.id)).length;
+    const weak=all.filter(t=>!mastered.has(t.id)).sort((a,b)=>(b.freq||0)-(a.freq||0))[0];
+    return {k,d,all,done,pct:Math.round(done/Math.max(all.length,1)*100),weak};
   });
-  const topFreq=[...TOPICS].sort((a,b)=>b.freq-a.freq).slice(0,6);
+  const topFreq=[...TOPICS].sort((a,b)=>(b.freq||0)-(a.freq||0)).slice(0,6);
+  const focusTopic=topFreq.find(t=>!mastered.has(t.id)) || topFreq[0] || TOPICS[0];
+  const focusDomain=DOM[focusTopic?.domain] || DOM.algebra;
+  const masteredPct=Math.round((mastered.size||0)/Math.max(total,1)*100);
+  const basicCount=Object.values(BASICS_BY_TOPIC).reduce((sum,arr)=>sum+(arr?.length||0),0);
+  const groupCount=TOPIC_GROUPS.length;
+  const finalCount=FINAL_GROUPS.length;
+  const predictedScore=Math.round(Math.min(120,Math.max(18,masteredPct*1.08 + Math.min(wrongSet.size,12)*0.4)));
+  const needDiag=mastered.size===0;
+  const todayHeadline=needDiag
+    ? "今天先做一次快速诊断，找到数学知识树的第一根待修树枝。"
+    : wrongSet.size>0
+      ? `今天先修 ${focusTopic.name}，再清理 ${Math.min(wrongSet.size,3)} 道到期错题。`
+      : `今天适合推进 ${focusTopic.name}，把理解推进到能独立做题。`;
+  const todayReason=wrongSet.size>0
+    ? "错题会暴露最真实的断点，先处理断点，再进入同类题，会比随机刷题更稳。"
+    : "系统优先选择高频、未完全稳定、能带动后续知识的节点，避免今天学散。";
+  const nextStep=wrongSet.size>0
+    ? "做完后，系统会把这个错因从待修复区推进到隔天独立复做。"
+    : "做完后，系统会推进到同类真题和方法训练，不停在单点记忆。";
+  const panel={background:C.s1,border:`1px solid ${C.border}`,borderRadius:14};
+  const softPanel={background:C.s2,border:`1px solid ${C.border}`,borderRadius:12};
+  const buttonBase={border:"none",cursor:"pointer",fontWeight:900,fontSize:14};
+  const mathRoots=[
+    {label:"基础知识",val:total,desc:"概念五要素",color:C.m1,nav:"graph"},
+    {label:"基础题",val:basicCount,desc:"先稳基本动作",color:C.m2,nav:"modules"},
+    {label:"题组训练",val:groupCount,desc:"同法成组训练",color:C.m3,nav:"modules"},
+    {label:"压轴题组",val:finalCount,desc:"综合题灵感",color:C.m4,nav:"modules"},
+    {label:"10年真题",val:EXAM_QS.length,desc:"真实中考语境",color:C.alg,nav:"practice"},
+    {label:"23种方法",val:METHODS.length,desc:"方法与思想",color:C.purple,nav:"methods"},
+    {label:"向上提升",val:"提",desc:"从会做到会迁移",color:C.gold,nav:"sprint"},
+    {label:"向下补差",val:"补",desc:"从病根修起",color:C.red,nav:"diag"},
+  ];
+  const routes=[
+    {
+      title:"补根基",
+      tag:"先修根",
+      color:C.geo,
+      desc:"概念、基础题、前置知识和错因归因放在一起处理。",
+      main:{label:needDiag?"先做快速诊断":"进入数学底座",nav:needDiag?"quickdiag":"modules"},
+      actions:[["知识树","graph"],["智能诊断","diag"],["错因修复","wrong"]],
+    },
+    {
+      title:"提方法",
+      tag:"再提法",
+      color:C.purple,
+      desc:"把 23 种方法接到题目和知识点上，形成可迁移的解题路径。",
+      main:{label:"查看 23 种方法",nav:"methods"},
+      actions:[["题组训练","modules"],["AI 学伴","agent"],["知识树","graph"]],
+    },
+    {
+      title:"稳输出",
+      tag:"真题验",
+      color:C.alg,
+      desc:"用真题、试卷分析和考前冲刺验证是否真的能拿分。",
+      main:{label:"进入真题刷题",nav:"practice"},
+      actions:[["试卷分析","paper"],["考前冲刺","sprint"],["作业识别","ocr"]],
+    },
+    {
+      title:"反向规划",
+      tag:"倒推走",
+      color:C.gold,
+      desc:"从目标分数、时间和每日精力倒推阶段方案，再落到纸面训练。",
+      main:{label:"制定目标计划",nav:"plan"},
+      actions:[["训练单","printplan"],["今日卡","morning"],["AI 路径","agent"]],
+    },
+  ];
+  const todayTasks=[
+    {n:"01",title:"5 分钟复盘",body:`复盘 ${focusTopic.name} 的定义、图像或关键条件。`,why:"先把今天要修的枝干看清。",color:C.geo,nav:"morning"},
+    {n:"02",title:"10 分钟针对练",body:"完成 2 道基础题 + 1 道同类真题，系统记录耗时和自信度。",why:"用短练习验证是否能独立启动。",color:C.alg,nav:"modules"},
+    {n:"03",title:"1 道错因追踪",body:wrongSet.size>0?`处理到期错题，不急着看完整答案。`:"先建立第一条错因记录。",why:"只修一个错因，减少挫败感。",color:C.red,nav:wrongSet.size>0?"wrong":"practice"},
+  ];
+
+  return(
+    <div style={{padding:isMobile?12:28,maxWidth:1120,margin:"0 auto"}}>
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.35fr .75fr",gap:14,marginBottom:14}}>
+        <div style={{...panel,padding:isMobile?"22px 18px":"30px 34px",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",inset:0,pointerEvents:"none",
+            background:`radial-gradient(circle at 85% 0%,${C.geo}18,transparent 34%),linear-gradient(135deg,${C.alg}10,transparent 42%)`}}/>
+          <div style={{position:"relative"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:12,color:C.geo,letterSpacing:3,textTransform:"uppercase",fontWeight:900,marginBottom:8}}>
+                  ShuMai Math Coach OS
+                </div>
+                <h1 style={{margin:"0 0 10px",fontSize:isMobile?30:44,lineHeight:1.06,color:C.text,fontWeight:950,letterSpacing:0}}>
+                  树脉数学驾驶舱
+                </h1>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <Tag c={C.alg}>{identityLabel}</Tag>
+                  <Tag c={C.geo}>{studyMode}</Tag>
+                  <Tag c={C.gold}>中考数学主体系</Tag>
+                </div>
+              </div>
+              <button onClick={()=>onNav("home")}
+                style={{...buttonBase,alignSelf:"flex-start",padding:"10px 14px",borderRadius:10,
+                  background:C.s2,border:`1px solid ${C.border}`,color:C.muted}}>
+                返回总首页
+              </button>
+            </div>
+
+            <div style={{...softPanel,padding:isMobile?16:18,borderColor:`${focusDomain.color}36`,marginBottom:18}}>
+              <div style={{fontSize:12,color:focusDomain.color,fontWeight:900,marginBottom:8}}>今日 AI 判断</div>
+              <div style={{fontSize:isMobile?20:25,lineHeight:1.48,fontWeight:950,color:C.text}}>
+                {todayHeadline}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginTop:14}}>
+                <div style={{fontSize:13,color:C.muted,lineHeight:1.75}}>
+                  <span style={{color:C.geo,fontWeight:900}}>为什么是它：</span>{todayReason}
+                </div>
+                <div style={{fontSize:13,color:C.muted,lineHeight:1.75}}>
+                  <span style={{color:C.gold,fontWeight:900}}>做完推进：</span>{nextStep}
+                </div>
+              </div>
+            </div>
+
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              <button onClick={()=>onNav(needDiag?"quickdiag":"morning")}
+                style={{...buttonBase,padding:"12px 18px",borderRadius:11,background:C.geo,color:"#03130e"}}>
+                {needDiag?"先做快速诊断":"开始今日 3 件事"}
+              </button>
+              <button onClick={()=>onNav("printplan")}
+                style={{...buttonBase,padding:"12px 18px",borderRadius:11,background:C.gold+"18",
+                  color:C.gold,border:`1px solid ${C.gold}42`}}>
+                生成纸质训练单
+              </button>
+              <button onClick={()=>onNav("plan")}
+                style={{...buttonBase,padding:"12px 18px",borderRadius:11,background:C.s2,
+                  color:C.text,border:`1px solid ${C.border}`}}>
+                反向规划目标分
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <aside style={{...panel,padding:isMobile?18:20,display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>学段权限</div>
+            <StageAccessStrip currentStage={currentStage} subject="数学" />
+          </div>
+          <div style={{...softPanel,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10}}>
+              <span style={{fontSize:12,color:C.muted}}>知识树掌握</span>
+              <span style={{fontSize:28,fontWeight:950,color:C.ok}}>{masteredPct}%</span>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8}}>
+              <Bar v={masteredPct} color={C.ok} h={7}/>
+              <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>{mastered.size}/{total}</span>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {[
+              ["待修错题",wrongSet.size,C.red],
+              ["预测得分",`${predictedScore}/120`,predictedScore>=96?C.ok:predictedScore>=72?C.gold:C.red],
+              ["方法卡",`${Math.min(mastered.size,METHODS.length)}/${METHODS.length}`,C.purple],
+              ["今日起点",focusDomain.name,focusDomain.color],
+            ].map(([label,val,color])=>(
+              <div key={label} style={{...softPanel,padding:"12px 10px"}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:6}}>{label}</div>
+                <div style={{fontSize:15,fontWeight:950,color,lineHeight:1.25}}>{val}</div>
+              </div>
+            ))}
+          </div>
+        </aside>
+      </section>
+
+      <section style={{...panel,padding:isMobile?16:20,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:14}}>
+          <div>
+            <h2 style={{margin:0,fontSize:20,color:C.text,fontWeight:950}}>今日 3 件事</h2>
+            <div style={{fontSize:13,color:C.muted,marginTop:5}}>先稳一个点，再推进一层。系统负责选择，学生负责开始。</div>
+          </div>
+          <Tag c={C.geo}>两次点击内开始</Tag>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10}}>
+          {todayTasks.map(t=>(
+            <button key={t.n} onClick={()=>onNav(t.nav)}
+              style={{textAlign:"left",padding:16,borderRadius:12,cursor:"pointer",
+                background:C.s2,border:`1px solid ${t.color}30`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <span style={{fontSize:12,color:t.color,fontWeight:950}}>{t.n}</span>
+                <span style={{width:28,height:28,borderRadius:14,background:t.color+"18",color:t.color,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontWeight:950}}>→</span>
+              </div>
+              <div style={{fontSize:17,fontWeight:950,color:C.text,marginBottom:8}}>{t.title}</div>
+              <div style={{fontSize:13,color:C.muted,lineHeight:1.7}}>{t.body}</div>
+              <div style={{fontSize:12,color:t.color,lineHeight:1.65,fontWeight:800,marginTop:10}}>{t.why}</div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:10,marginBottom:14}}>
+        {routes.map(r=>(
+          <div key={r.title} style={{...panel,padding:16,borderColor:`${r.color}28`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10}}>
+              <h3 style={{margin:0,fontSize:18,color:C.text,fontWeight:950}}>{r.title}</h3>
+              <Tag c={r.color}>{r.tag}</Tag>
+            </div>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.75,minHeight:isMobile?0:70}}>{r.desc}</div>
+            <button onClick={()=>onNav(r.main.nav)}
+              style={{...buttonBase,width:"100%",marginTop:14,padding:"11px 12px",borderRadius:10,
+                background:r.color+"18",color:r.color,border:`1px solid ${r.color}42`}}>
+              {r.main.label}
+            </button>
+            <div style={{display:"flex",flexWrap:"wrap",gap:7,marginTop:10}}>
+              {r.actions.map(([label,nav])=>(
+                <button key={label} onClick={()=>onNav(nav)}
+                  style={{padding:"6px 9px",borderRadius:8,cursor:"pointer",fontSize:12,
+                    background:C.s2,border:`1px solid ${C.border}`,color:C.muted}}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section style={{...panel,padding:isMobile?16:20,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:14}}>
+          <div>
+            <h2 style={{margin:0,fontSize:20,color:C.text,fontWeight:950}}>数学根基不丢</h2>
+            <div style={{fontSize:13,color:C.muted,marginTop:5}}>基础知识、题、方法、真题和错因仍然全部在，只是被组织成路径。</div>
+          </div>
+          <Tag c={C.gold}>网状关联</Tag>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:9}}>
+          {mathRoots.map(item=>(
+            <button key={item.label} onClick={()=>onNav(item.nav)}
+              style={{textAlign:"left",padding:14,borderRadius:10,cursor:"pointer",
+                background:C.s2,border:`1px solid ${item.color}25`}}>
+              <div style={{fontSize:12,color:C.muted,marginBottom:8}}>{item.label}</div>
+              <div style={{fontSize:24,fontWeight:950,color:item.color,lineHeight:1}}>{item.val}</div>
+              <div style={{fontSize:12,color:C.muted,lineHeight:1.55,marginTop:8}}>{item.desc}</div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14,marginBottom:14}}>
+        <div style={{...panel,padding:isMobile?16:20}}>
+          <h2 style={{margin:"0 0 14px",fontSize:20,color:C.text,fontWeight:950}}>知识树行动区</h2>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {domStats.map(s=>(
+              <button key={s.k} onClick={()=>onNav("graph")}
+                style={{display:"grid",gridTemplateColumns:"92px 1fr auto",gap:10,alignItems:"center",
+                  padding:12,borderRadius:10,cursor:"pointer",background:C.s2,border:`1px solid ${s.d.color}26`,textAlign:"left"}}>
+                <div>
+                  <div style={{fontSize:14,color:s.d.color,fontWeight:950}}>{s.d.name}</div>
+                  <div style={{fontSize:11,color:C.muted,marginTop:4}}>{s.done}/{s.all.length}</div>
+                </div>
+                <Bar v={s.pct} color={s.d.color} h={7}/>
+                <div style={{fontSize:18,color:s.d.color,fontWeight:950}}>{s.pct}%</div>
+              </button>
+            ))}
+          </div>
+          <div style={{...softPanel,padding:14,marginTop:12,borderColor:`${focusDomain.color}30`}}>
+            <div style={{fontSize:12,color:focusDomain.color,fontWeight:900,marginBottom:6}}>当前待修节点</div>
+            <div style={{fontSize:18,color:C.text,fontWeight:950}}>{focusTopic.name}</div>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.7,marginTop:8}}>
+              先修这一根树枝，后面的同类题会顺很多。
+            </div>
+            <button onClick={()=>onNav("detail",focusTopic.id)}
+              style={{...buttonBase,marginTop:12,padding:"9px 12px",borderRadius:9,
+                background:focusDomain.color+"18",color:focusDomain.color,border:`1px solid ${focusDomain.color}42`}}>
+              打开节点教练
+            </button>
+          </div>
+        </div>
+
+        <div style={{...panel,padding:isMobile?16:20}}>
+          <h2 style={{margin:"0 0 14px",fontSize:20,color:C.text,fontWeight:950}}>高频考点 TOP 6</h2>
+          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:9}}>
+            {topFreq.map((t,i)=>{
+              const c=DOM[t.domain].color,isM=mastered.has(t.id);
+              return(
+                <button key={t.id} onClick={()=>onNav("detail",t.id)}
+                  style={{display:"grid",gridTemplateColumns:"34px 1fr auto",gap:10,alignItems:"center",
+                    padding:"11px 12px",borderRadius:10,cursor:"pointer",textAlign:"left",
+                    background:C.s2,border:`1px solid ${isM?C.ok+"45":c+"24"}`}}>
+                  <div style={{fontSize:12,color:C.dim,fontWeight:950}}>#{i+1}</div>
+                  <div>
+                    <div style={{fontSize:15,fontWeight:950,color:isM?C.ok:C.text}}>{t.name}</div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:4}}>考 {t.examYears.length} 年 · {t.totalScore} 分</div>
+                  </div>
+                  <div style={{fontSize:17,fontWeight:950,color:c}}>{t.freq}%</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section style={{...panel,padding:isMobile?16:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+          <div>
+            <h2 style={{margin:"0 0 8px",fontSize:20,color:C.text,fontWeight:950}}>成熟题库维度，转化成树脉路径</h2>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.75,maxWidth:760}}>
+              题型、难度、来源、年份、能力、题类这些维度会用于 AI 选题和组卷，但不会把数学首页做成筛选页。学生看到的是下一步，系统在底层完成选择。
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {["常考题","易错题","压轴题","中考真题","能力标签","知识点挑题"].map(label=><Tag key={label} c={C.cyan}>{label}</Tag>)}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PageEnglish({onNav}) {
+  const {isMobile}=useBP();
+  const gradeLabel = localStorage.getItem("shumai_grade") || "未设置学段";
+  const currentStage = inferStageFromGrade(gradeLabel);
+  const cards = [
+    {title:"小学英语", desc:"词汇、句型、基础阅读与听说起步", color:C.alg},
+    {title:"初中英语", desc:"语法、阅读、完形、写作与中考提分", color:C.geo},
+    {title:"高中英语", desc:"高阶阅读、写作、词汇体系与长线规划", color:C.purple},
+  ];
+  return(
+    <div style={{padding:isMobile?12:28,maxWidth:isMobile?"100%":1060,margin:"0 auto",width:"100%",minWidth:0,overflowX:"hidden"}}>
+      <div style={{background:`linear-gradient(135deg,${C.geo}12,${C.alg}10)`,
+        border:`1px solid ${C.geo}22`,borderRadius:18,padding:isMobile?"18px 16px":"24px 28px",
+        marginBottom:14,minWidth:0,overflow:"hidden"}}>
+        <div style={{fontSize:12,color:C.geo,letterSpacing:isMobile?2:3,textTransform:"uppercase",fontWeight:700,...mobileWrapText}}>
+          树脉 英语体系
+        </div>
+        <h1 style={{margin:"6px 0 8px",fontSize:isMobile?24:28,fontWeight:900,color:C.text,...mobileWrapText}}>
+          英语独立体系正在搭建
+        </h1>
+        <p style={{margin:0,fontSize:14,lineHeight:1.8,color:C.muted,...mobileWrapText}}>
+          这不是把数学底座硬套过来，而是为英语重新建立一套知识、题目、方法、错因、计划与 AI 教练体系。
+        </p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:12,minWidth:0,maxWidth:"100%"}}>
+          <Tag c={C.geo}>独立体系</Tag>
+          <Tag c={C.alg}>小学 / 初中 / 高中</Tag>
+          <Tag c={C.purple}>后续单独探讨</Tag>
+          <Tag c={C.ok}>当前开放：{currentStage}</Tag>
+        </div>
+      </div>
+
+      <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16,marginBottom:14,minWidth:0,overflow:"hidden"}}>
+        <div style={{display:"flex",alignItems:isMobile?"flex-start":"center",justifyContent:"space-between",gap:6,marginBottom:10,minWidth:0,flexDirection:isMobile?"column":"row"}}>
+          <div style={{fontSize:15,fontWeight:800,color:C.text,minWidth:0}}>英语学段权限</div>
+          <div style={{fontSize:12,color:C.muted,textAlign:isMobile?"left":"right",...mobileWrapText}}>按账号学段进入</div>
+        </div>
+        <StageAccessStrip currentStage={currentStage} subject="英语" />
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"minmax(0,1fr)":"repeat(3,minmax(0,1fr))",gap:10,marginBottom:14,minWidth:0,maxWidth:"100%"}}>
+        {cards.map(card=>(
+          <div key={card.title} style={{background:C.s1,border:`1px solid ${card.color}22`,borderRadius:14,padding:16,minWidth:0,overflow:"hidden"}}>
+            <div style={{fontSize:18,fontWeight:800,color:card.color,marginBottom:6,...mobileWrapText}}>{card.title}</div>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.7,...mobileWrapText}}>{card.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16,minWidth:0,overflow:"hidden"}}>
+        <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:8}}>下一步</div>
+        <div style={{fontSize:13,color:C.muted,lineHeight:1.8,...mobileWrapText}}>
+          先做英语体系的信息架构，再决定词汇、语法、阅读、写作、听力与真题如何联网。
+        </div>
+        <div style={{marginTop:12}}>
+          <button onClick={()=>onNav("home")}
+            style={{padding:"8px 14px",borderRadius:10,border:`1px solid ${C.alg}55`,
+              background:C.alg+"18",color:C.alg,cursor:"pointer",fontWeight:700,minWidth:0,whiteSpace:"normal"}}>
+            返回首页
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageReversePlan({onNav}) {
+  const {isMobile}=useBP();
+  const [currentScore,setCurrentScore]=useState(92);
+  const [targetScore,setTargetScore]=useState(115);
+  const [days,setDays]=useState(80);
+  const [minutes,setMinutes]=useState(45);
+  const [saving,setSaving]=useState(false);
+  const [saveMsg,setSaveMsg]=useState("");
+  const gap=Math.max(0,targetScore-currentScore);
+  const phase1=Math.max(7,Math.round(days*0.35));
+  const phase2=Math.max(7,Math.round(days*0.4));
+  const phase3=Math.max(1,days-phase1-phase2);
+  const dailyLoad=minutes>=60?"2组训练 + 1道错因追踪":minutes>=40?"1组训练 + 1道错因追踪":"5分钟复习 + 2道基础题";
+  const targetDate=useMemo(()=>{
+    const d=new Date();
+    d.setDate(d.getDate()+days);
+    return d.toISOString().slice(0,10);
+  },[days]);
+  const token=window.__SHUMAI_TOKEN||localStorage.getItem("shumai_auth_token")||"";
+
+  useEffect(()=>{
+    if(!token) return;
+    let alive=true;
+    fetch(`${BACKEND_URL}/api/study-plan?subject=math`,{
+      headers:{Authorization:`Bearer ${token}`},
+    }).then(r=>r.ok?r.json():null).then(data=>{
+      if(!alive||!data?.plan) return;
+      const p=data.plan;
+      if(Number.isFinite(Number(p.current_score))) setCurrentScore(Number(p.current_score));
+      if(Number.isFinite(Number(p.target_score))) setTargetScore(Number(p.target_score));
+      if(Number.isFinite(Number(p.daily_minutes))) setMinutes(Number(p.daily_minutes));
+      if(p.target_date){
+        const left=Math.max(1,Math.ceil((new Date(p.target_date)-new Date())/86400000));
+        setDays(left);
+      }
+    }).catch(()=>{});
+    return()=>{alive=false;};
+  },[token]);
+
+  const savePlan=async()=>{
+    if(!token){
+      try{localStorage.setItem("shumai_reverse_plan",JSON.stringify({currentScore,targetScore,days,minutes,targetDate}));}catch{}
+      setSaveMsg("已先保存在本机。登录后可同步到微信提醒和每日任务。");
+      return;
+    }
+    setSaving(true);setSaveMsg("");
+    try{
+      const planData={
+        gap,days,phase1,phase2,phase3,dailyLoad,
+        phases:[
+          {title:"补根基",days:phase1,desc:"基础知识 + 基础题 + 高频薄弱点"},
+          {title:"提方法",days:phase2,desc:"题组训练 + 23种方法 + 真题归因"},
+          {title:"稳输出",days:phase3,desc:"压轴题组 + 模拟卷 + 错题清除"},
+        ],
+      };
+      const r=await fetch(`${BACKEND_URL}/api/study-plan`,{
+        method:"PUT",
+        headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify({
+          subject:"math",
+          stage:"初中",
+          currentScore,
+          targetScore,
+          targetDate,
+          dailyMinutes:minutes,
+          planData,
+        }),
+      });
+      const data=await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(data.error||"保存失败");
+      setSaveMsg("目标计划已保存。后续每日任务和微信提醒会逐步读取这份计划。");
+    }catch(e){
+      setSaveMsg(`保存失败：${e.message}`);
+    }finally{
+      setSaving(false);
+    }
+  };
 
   return(
     <div style={{padding:isMobile?12:28,maxWidth:1060,margin:"0 auto"}}>
-
-      {/* ① Hero — 与第三框融合，加入完整题库数字 */}
-      <div style={{background:`linear-gradient(135deg,${C.alg}14,${C.geo}10)`,
-        border:`1px solid ${C.alg}25`,borderRadius:18,padding:isMobile?"18px 16px":"24px 28px",
-        marginBottom:14,position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:-80,right:-80,width:280,height:280,
-          background:C.alg,borderRadius:"50%",opacity:.04}}/>
-        {/* 上方：品牌 + 掌握进度 */}
-        <div style={{display:"flex",alignItems:"flex-start",gap:16,flexWrap:"wrap",marginBottom:16}}>
-          <div style={{flex:1}}>
-            <div style={{fontSize:13,color:C.alg,letterSpacing:3,marginBottom:6,
-              textTransform:"uppercase",fontWeight:700}}>
-              青岛中考数学 · 智能学习系统
-            </div>
-            <h1 style={{margin:"0 0 6px",fontSize:isMobile?24:28,fontWeight:900,
-              color:C.text,letterSpacing:-0.5}}>
-              数脉 ShuMai
-            </h1>
-            <p style={{margin:0,fontSize:14,color:C.muted,lineHeight:1.7}}>
-              10年命题知识图谱 · 四模块精准训练 · 23种解题方法 · 做题只做减法，冲满分
-            </p>
-          </div>
-          <div style={{textAlign:"right",flexShrink:0}}>
-            <div style={{fontSize:isMobile?32:38,fontWeight:900,color:C.ok,lineHeight:1}}>
-              {mastered.size}<span style={{fontSize:18,color:C.muted}}>/{total}</span>
-            </div>
-            <div style={{fontSize:13,color:C.muted,marginBottom:6}}>知识点已掌握</div>
-            <div style={{width:120}}>
-              <Bar v={Math.round(mastered.size/total*100)} color={C.ok} h={6}/>
-            </div>
-            <div style={{fontSize:13,color:C.ok,marginTop:3}}>
-              {Math.round(mastered.size/total*100)}% 完成
-            </div>
-          </div>
-        </div>
-
-        {/* 下方：题库数字横排 — 文字在上，数字在下 */}
-        <div style={{display:"grid",
-          gridTemplateColumns:isMobile?"repeat(4,1fr)":"repeat(7,1fr)",
-          gap:8,borderTop:`1px solid ${C.border}`,paddingTop:14}}>
-          {[
-            {label:"10年真题",   val:EXAM_QS.length, c:C.alg,    click:()=>onNav("practice")},
-            {label:"基础知识",   val:194,             c:C.geo,    click:()=>onNav("graph")},
-            {label:"基础习题",   val:500,             c:C.m2,     click:()=>onNav("modules")},
-            {label:"题组训练",   val:35,              c:C.m3,     click:()=>onNav("modules")},
-            {label:"压轴题组",   val:20,              c:C.m4,     click:()=>onNav("modules")},
-            {label:"真题错题本", val:wrongSet.size,   c:C.red,    click:()=>onNav("wrong")},
-            {label:"解题方法",   val:23,              c:C.purple, click:()=>onNav("methods")},
-          ].map(s=>(
-            <button key={s.label} onClick={s.click}
-              style={{background:C.s1+"aa",border:`1px solid ${s.c}22`,
-                borderRadius:10,padding:"10px 6px",textAlign:"center",
-                cursor:"pointer",transition:"border-color .2s"}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=s.c+"66"}
-              onMouseLeave={e=>e.currentTarget.style.borderColor=s.c+"22"}>
-              <div style={{fontSize:isMobile?11:13,color:C.muted,marginBottom:5,
-                lineHeight:1.3,minHeight:isMobile?28:34,display:"flex",
-                alignItems:"center",justifyContent:"center",fontWeight:500}}>
-                {s.label}
-              </div>
-              <div style={{fontSize:isMobile?16:20,fontWeight:900,color:s.c,lineHeight:1}}>
-                {s.val}
-              </div>
-            </button>
-          ))}
-        </div>
+      <div style={{background:`linear-gradient(135deg,${C.purple}14,${C.alg}10)`,
+        border:`1px solid ${C.purple}25`,borderRadius:18,padding:isMobile?"18px 16px":"24px 28px",marginBottom:14}}>
+        <div style={{fontSize:12,color:C.purple,letterSpacing:3,textTransform:"uppercase",fontWeight:700}}>目标倒推</div>
+        <h1 style={{margin:"6px 0 8px",fontSize:isMobile?24:28,fontWeight:900,color:C.text}}>反向规划学习方案</h1>
+        <p style={{margin:0,fontSize:14,color:C.muted,lineHeight:1.8}}>
+          输入目标成绩、当前水平、剩余时间和每日可学时长，树脉先给出阶段方案。后续会接入测评、错题、微信提醒和 PDF 训练单。
+        </p>
       </div>
 
-      {/* ② 今日任务 */}
-      <div style={{background:`linear-gradient(135deg,${C.alg}08,${C.purple}06)`,
-        border:`1px solid ${C.alg}25`,borderRadius:14,padding:"16px 20px",marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <h3 style={{margin:0,fontSize:16,fontWeight:800,color:C.text}}>📋 今日任务</h3>
-          <span style={{fontSize:12,padding:"3px 10px",borderRadius:10,
-            background:C.ok+"1a",color:C.ok,fontWeight:700}}>
-            +{Math.min((mastered.size||0)*5,999)} XP
-          </span>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)",gap:8}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"320px 1fr",gap:14}}>
+        <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
           {[
-            {icon:"🔄",label:"错题复练",
-              desc:wrongSet.size>0?`${Math.min(wrongSet.size,2)}道待复习`:"暂无错题",
-              done:wrongSet.size===0,action:()=>onNav("wrong")},
-            {icon:"📚",label:"新知识点",desc:"学习1个薄弱知识点",
-              done:false,action:()=>onNav("modules")},
-            {icon:"⚡",label:"挑战题",desc:"1道较难真题",
-              done:false,action:()=>onNav("practice")},
-            {icon:"☀️",label:"晨读卡",desc:"今日知识回顾",
-              done:false,action:()=>onNav("morning")},
-          ].map((t,i)=>(
-            <button key={i} onClick={t.action}
-              style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
-                borderRadius:9,cursor:"pointer",textAlign:"left",
-                background:t.done?C.ok+"10":C.s2,
-                border:`1px solid ${t.done?C.ok+"33":C.border}`}}>
-              <span style={{fontSize:18,flexShrink:0}}>{t.icon}</span>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:600,
-                  color:t.done?C.ok:C.text}}>{t.label}</div>
-                <div style={{fontSize:11,color:C.muted,
-                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {t.desc}
-                </div>
+            {label:"当前成绩",value:currentScore,set:setCurrentScore,min:0,max:120,unit:"分"},
+            {label:"目标成绩",value:targetScore,set:setTargetScore,min:0,max:120,unit:"分"},
+            {label:"剩余时间",value:days,set:setDays,min:1,max:365,unit:"天"},
+            {label:"每日可学",value:minutes,set:setMinutes,min:10,max:180,unit:"分钟"},
+          ].map(item=>(
+            <label key={item.label} style={{display:"block",marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:C.muted,marginBottom:6}}>
+                <span>{item.label}</span><span style={{color:C.text,fontWeight:700}}>{item.value}{item.unit}</span>
               </div>
-              <span style={{fontSize:14,color:t.done?C.ok:C.muted,flexShrink:0}}>
-                {t.done?"✓":"→"}
-              </span>
-            </button>
+              <input type="range" min={item.min} max={item.max} value={item.value}
+                onChange={e=>item.set(Number(e.target.value))}
+                style={{width:"100%",accentColor:C.purple}}/>
+            </label>
           ))}
         </div>
-      </div>
 
-      {/* ③ 快速入口 */}
-      <div style={{background:C.s1,border:`1px solid ${C.border}`,
-        borderRadius:12,padding:"14px 16px",marginBottom:14}}>
-        <h3 style={{margin:"0 0 10px",fontSize:15,color:C.text,
-          textTransform:"uppercase",letterSpacing:1}}>🚀 快速入口</h3>
-        <div style={{display:"grid",
-          gridTemplateColumns:isMobile?"repeat(2,1fr)":isTablet?"repeat(4,1fr)":"repeat(5,1fr)",
-          gap:8}}>
-          {[
-            {label:"📐 知识图谱",v:"graph",c:C.alg,desc:"24个核心节点"},
-            {label:"📚 四模块学习",v:"modules",c:C.geo,desc:"基础到压轴"},
-            {label:"✏️ 真题刷题",v:"practice",c:C.sta,desc:`${EXAM_QS.length}道中考题`},
-            {label:"🔧 23种方法",v:"methods",c:C.purple,desc:"解题方法体系"},
-            {label:"🤖 智能诊断",v:"diag",c:C.cyan,desc:"追因+学习路径"},
-            {label:"🎯 中考预测",v:"predict",c:C.gold,desc:"命题规律分析"},
-            {label:"📄 试卷分析",v:"paper",c:"#a78bfa",desc:"逆向拆解→模拟卷"},
-            {label:"📸 作业识别",v:"ocr",c:"#22d3ee",desc:"拍照→AI批改"},
-            {label:"🔥 考前冲刺",v:"sprint",c:"#f04f70",desc:"倒计时+阶段规划"},
-            {label:"🤖 学伴Agent",v:"agent",c:"#a78bfa",desc:"AI个性化路径"},
-          ].map(b=>(
-            <button key={b.v} onClick={()=>onNav(b.v)}
-              style={{padding:isMobile?"8px 10px":"10px 12px",borderRadius:10,
-                cursor:"pointer",textAlign:"left",
-                background:C.s2,border:`1px solid ${b.c}18`,transition:"all .2s"}}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor=b.c+"66";
-                e.currentTarget.style.background=b.c+"0c";}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor=b.c+"18";
-                e.currentTarget.style.background=C.s2;}}>
-              <div style={{fontSize:isMobile?13:14,fontWeight:700,
-                color:b.c,marginBottom:isMobile?0:2}}>{b.label}</div>
-              {!isMobile&&<div style={{fontSize:11,color:C.muted}}>{b.desc}</div>}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ④ 快速测试找起点 */}
-      {!mastered.size&&(
-        <button onClick={()=>onNav("quickdiag")}
-          style={{width:"100%",display:"flex",alignItems:"center",gap:16,
-            padding:"14px 20px",marginBottom:14,borderRadius:14,cursor:"pointer",
-            background:`linear-gradient(135deg,${C.cyan}10,${C.alg}08)`,
-            border:`1.5px solid ${C.cyan}33`,textAlign:"left",transition:"border-color .2s"}}
-          onMouseEnter={e=>e.currentTarget.style.borderColor=C.cyan}
-          onMouseLeave={e=>e.currentTarget.style.borderColor=C.cyan+"33"}>
-          <span style={{fontSize:32,flexShrink:0}}>📐</span>
-          <div style={{flex:1}}>
-            <div style={{fontSize:17,fontWeight:700,color:C.text,marginBottom:3}}>
-              快速测试，找起点
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+            <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:8}}>AI 初步判断</div>
+            <div style={{fontSize:24,fontWeight:900,color:gap>20?C.red:C.gold,lineHeight:1}}>
+              目标差距 {gap} 分
             </div>
-            <div style={{fontSize:13,color:C.muted}}>
-              10 道选择题，5 分钟，AI 帮你找到最佳学习起点
+            <div style={{marginTop:8,fontSize:13,color:C.muted,lineHeight:1.8}}>
+              这不是简单加练，而是要先补高频薄弱点，再用真题和错因追踪验证稳定性。
             </div>
           </div>
-          <span style={{fontSize:14,color:C.cyan,fontWeight:700,flexShrink:0}}>开始 →</span>
+
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10}}>
+            {[
+              {title:"补根基",days:phase1,desc:"基础知识 + 基础题 + 高频薄弱点",color:C.geo},
+              {title:"提方法",days:phase2,desc:"题组训练 + 23种方法 + 真题归因",color:C.alg},
+              {title:"稳输出",days:phase3,desc:"压轴题组 + 模拟卷 + 错题清除",color:C.purple},
+            ].map(p=>(
+              <div key={p.title} style={{background:C.s1,border:`1px solid ${p.color}25`,borderRadius:14,padding:14}}>
+                <div style={{fontSize:17,fontWeight:900,color:p.color,marginBottom:4}}>{p.title}</div>
+                <div style={{fontSize:13,color:C.text,fontWeight:700,marginBottom:6}}>{p.days} 天</div>
+                <div style={{fontSize:12,color:C.muted,lineHeight:1.7}}>{p.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+            <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:8}}>今日执行建议</div>
+            <div style={{fontSize:14,color:C.muted,lineHeight:1.8}}>
+              每天 {minutes} 分钟：{dailyLoad}。做完后按错因标签回流到知识树，隔天再验证一次。
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+              <button onClick={savePlan} disabled={saving}
+                style={{padding:"8px 14px",borderRadius:10,border:"none",
+                  background:saving?C.muted:C.alg,color:"white",fontWeight:800,cursor:saving?"default":"pointer"}}>
+                {saving?"保存中...":"保存目标计划"}
+              </button>
+              <button onClick={()=>onNav("agent")}
+                style={{padding:"8px 14px",borderRadius:10,border:"none",background:C.purple,color:"white",fontWeight:800,cursor:"pointer"}}>
+                进入学伴 Agent
+              </button>
+              <button onClick={()=>onNav("paper")}
+                style={{padding:"8px 14px",borderRadius:10,border:`1px solid ${C.border}`,background:C.s2,color:C.text,fontWeight:700,cursor:"pointer"}}>
+                试卷逆向分析
+              </button>
+              <button onClick={()=>onNav("printplan")}
+                style={{padding:"8px 14px",borderRadius:10,border:`1px solid ${C.gold}44`,background:C.gold+"12",color:C.gold,fontWeight:800,cursor:"pointer"}}>
+                生成纸质训练单
+              </button>
+            </div>
+            {saveMsg&&(
+              <div style={{marginTop:10,fontSize:12,color:saveMsg.startsWith("保存失败")?C.red:C.ok,lineHeight:1.7}}>
+                {saveMsg}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PagePrintPlanLegacy({onNav, mastered=new Set(), wrongSet=new Set(), basicWrongSet=new Set()}) {
+  const {isMobile}=useBP();
+  const today=new Date().toLocaleDateString("zh-CN");
+  const print=()=>window.print();
+  const [studyPlan,setStudyPlan]=useState(null);
+  const token=window.__SHUMAI_TOKEN||localStorage.getItem("shumai_auth_token")||"";
+  useEffect(()=>{
+    if(!token) return;
+    let alive=true;
+    fetch(`${BACKEND_URL}/api/study-plan?subject=math`,{
+      headers:{Authorization:`Bearer ${token}`},
+    }).then(r=>r.ok?r.json():null).then(data=>{
+      if(alive) setStudyPlan(data?.plan||null);
+    }).catch(()=>{});
+    return()=>{alive=false;};
+  },[token]);
+  const weakTopics=[...TOPICS].filter(t=>!mastered.has(t.id)).sort((a,b)=>b.freq-a.freq).slice(0,3);
+  const wrongQs=EXAM_QS.filter(q=>wrongSet.has(q.id));
+  const targetTopic=weakTopics[0]||TOPICS.find(t=>t.id==="linear_fn")||TOPICS[0];
+  const targetColor=DOM[targetTopic.domain]?.color||C.alg;
+  const recommendedQs=EXAM_QS.filter(q=>q.topic===targetTopic.id)
+    .sort((a,b)=>(a.diff||1)-(b.diff||1))
+    .slice(0,3);
+  const reviewWrong=wrongQs.slice(0,2);
+  const basicReview=[...basicWrongSet].map(lookupBasicQ).filter(Boolean).slice(0,2);
+  const planData=studyPlan?.plan_data||{};
+  const planGap=studyPlan?Math.max(0,Number(studyPlan.target_score||0)-Number(studyPlan.current_score||0)):null;
+  const targetDate=studyPlan?.target_date?new Date(studyPlan.target_date).toLocaleDateString("zh-CN"):null;
+  const minutes=Number(studyPlan?.daily_minutes||planData.dailyLoad?.match(/\d+/)?.[0]||45);
+  const planPhase=planData.phases?.[0]?.title
+    ? planData.phases.map(p=>`${p.title}${p.days?` ${p.days}天`:""}`).join(" / ")
+    : "补根基 / 提方法 / 稳输出";
+  const loadLine=minutes>=60
+    ? "加一组题组训练，保留 1 道错因追踪。"
+    : minutes>=40
+      ? "完成 1 组针对练，再做 1 道错因追踪。"
+      : "只做 5 分钟复盘和 2 道基础题，保持可完成。";
+  return(
+    <div style={{padding:isMobile?12:28,maxWidth:860,margin:"0 auto"}}>
+      <style>{`
+        @media print{
+          header, aside, nav, button{display:none!important}
+          body{background:#fff!important;color:#111!important}
+          .print-sheet{box-shadow:none!important;border-color:#111!important;background:#fff!important;color:#111!important}
+          .print-sheet *{color:#111!important}
+        }
+      `}</style>
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+        <button onClick={()=>onNav("plan")}
+          style={{padding:"7px 14px",borderRadius:8,cursor:"pointer",background:C.s2,color:C.text,border:`1px solid ${C.border}`}}>
+          ← 返回规划
         </button>
-      )}
+        <button onClick={print}
+          style={{padding:"8px 16px",borderRadius:10,cursor:"pointer",background:C.gold,color:"#111",border:"none",fontWeight:900}}>
+          打印训练单
+        </button>
+      </div>
 
-      {/* ⑤ 能力雷达 — 全宽，左竖排文字 + 右雷达等高 */}
-      <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,
-        padding:"18px 22px",marginBottom:14}}>
-        <div style={{display:"flex",gap:24,alignItems:"stretch",flexWrap:isMobile?"wrap":"nowrap"}}>
+      <div className="print-sheet" style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:16,padding:isMobile?18:28}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",borderBottom:`1px solid ${C.border}`,paddingBottom:14,marginBottom:18}}>
+          <div>
+            <div style={{fontSize:13,color:C.gold,fontWeight:900,letterSpacing:2}}>树脉 AI 纸质训练单</div>
+            <h1 style={{margin:"6px 0 0",fontSize:28,color:C.text}}>今日数学修复训练</h1>
+          </div>
+          <div style={{fontSize:13,color:C.muted,textAlign:"right"}}>
+            <div>日期：{today}</div>
+            <div>姓名：__________</div>
+          </div>
+        </div>
 
-          {/* 左：竖排 — 标题 / 打卡 / 经验值 / 方法卡 */}
-          <div style={{flex:"0 0 auto",width:isMobile?"100%":220,display:"flex",
-            flexDirection:"column",gap:12}}>
-            <div style={{fontSize:15,fontWeight:700,color:C.text}}>📡 能力雷达</div>
+        <section style={{marginBottom:18}}>
+          <h2 style={{fontSize:18,color:C.text,margin:"0 0 8px"}}>一、今日目标</h2>
+          <div style={{fontSize:15,lineHeight:1.9,color:C.text}}>
+            先稳住「{targetTopic.name}」，重点处理高频薄弱点、错因复盘和 3 道推荐题。
+          </div>
+          {studyPlan&&(
+            <div style={{marginTop:8,padding:10,borderRadius:10,border:`1px solid ${C.gold}33`,background:C.gold+"10",fontSize:14,lineHeight:1.8,color:C.text}}>
+              目标计划：{studyPlan.current_score} → {studyPlan.target_score} 分
+              {planGap!==null?`，差距 ${planGap} 分`:""}
+              {targetDate?`，目标日期 ${targetDate}`:""}。每日 {minutes} 分钟，阶段路线：{planPhase}。
+            </div>
+          )}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+            {weakTopics.map(t=><Tag key={t.id} c={DOM[t.domain]?.color||C.alg}>{t.name}</Tag>)}
+          </div>
+        </section>
 
-            <div style={{padding:"10px 14px",borderRadius:10,
-              background:`linear-gradient(135deg,${C.sta}12,${C.red}08)`,
-              border:`1px solid ${C.sta}25`,display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:22}}>🔥</span>
-              <div>
-                <div style={{fontSize:20,fontWeight:900,color:C.sta,lineHeight:1}}>
-                  {Math.min(mastered.size,99)}
-                </div>
-                <div style={{fontSize:12,color:C.muted}}>连续打卡天</div>
+        <section style={{marginBottom:18}}>
+          <h2 style={{fontSize:18,color:C.text,margin:"0 0 8px"}}>二、训练安排</h2>
+          {[
+            `5分钟复习：回顾「${targetTopic.name}」的概念、公式和题眼。`,
+            `10分钟针对练：完成 ${recommendedQs.length||3} 道推荐题，先易后难。${studyPlan?loadLine:""}`,
+            `错因追踪：复盘 ${reviewWrong.length+basicReview.length||1} 道最近错题，写出错误原因和正确入口。`,
+          ].map((line,i)=>(
+            <div key={line} style={{display:"flex",gap:8,fontSize:15,lineHeight:1.9,color:C.text}}>
+              <b>{i+1}.</b><span>{line}</span>
+            </div>
+          ))}
+        </section>
+
+        <section style={{marginBottom:18}}>
+          <h2 style={{fontSize:18,color:C.text,margin:"0 0 8px"}}>三、推荐题</h2>
+          {(recommendedQs.length?recommendedQs:[1,2,3]).map((q,i)=>(
+            <div key={q.id||i} style={{border:`1px solid ${C.border}`,borderRadius:10,minHeight:100,marginBottom:10,padding:10}}>
+              <div style={{fontSize:14,color:targetColor,fontWeight:800,marginBottom:6}}>
+                第 {i+1} 题 {q.yr?` · ${q.yr}年 第${q.no}题 · ${"★".repeat(q.diff||1)}`:""}
+              </div>
+              <div style={{fontSize:14,color:C.text,lineHeight:1.7}}>
+                {q.content||"请从系统推荐题中抄写题目后完成。"}
+              </div>
+              <div style={{marginTop:8,minHeight:42,borderTop:`1px dashed ${C.border}`,paddingTop:8,fontSize:13,color:C.muted}}>
+                作答：
               </div>
             </div>
+          ))}
+        </section>
 
-            <div style={{padding:"10px 14px",borderRadius:10,
-              background:`linear-gradient(135deg,${C.gold}12,${C.sta}08)`,
-              border:`1px solid ${C.gold}25`,display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:22}}>⭐</span>
-              <div>
-                <div style={{fontSize:20,fontWeight:900,color:C.gold,lineHeight:1}}>
-                  {mastered.size*5+wrongSet.size*2}
-                </div>
-                <div style={{fontSize:12,color:C.muted}}>经验值 XP</div>
+        {(reviewWrong.length>0||basicReview.length>0)&&(
+          <section style={{marginBottom:18}}>
+            <h2 style={{fontSize:18,color:C.text,margin:"0 0 8px"}}>四、错题复盘</h2>
+            {[...reviewWrong,...basicReview].map((q,i)=>(
+              <div key={q.id||i} style={{fontSize:14,color:C.text,lineHeight:1.8,marginBottom:6}}>
+                {i+1}. {q.yr?`${q.yr}年 第${q.no}题`:(q._label||"基础错题")}：{q.error||"写出这道题的错误原因。"}
+              </div>
+            ))}
+          </section>
+        )}
+
+        <section style={{marginBottom:18}}>
+          <h2 style={{fontSize:18,color:C.text,margin:"0 0 8px"}}>五、错因记录</h2>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
+            {["概念不清","公式记错","审题漏条件","计算失误","方法选择错误","其他：________"].map(x=>(
+              <div key={x} style={{fontSize:15,color:C.text}}>□ {x}</div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 style={{fontSize:18,color:C.text,margin:"0 0 8px"}}>六、家长确认</h2>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,fontSize:15,color:C.text}}>
+            <div>完成情况：□ 已完成 □ 部分完成 □ 未完成</div>
+            <div>家长签字：____________</div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function PagePrintPlan({onNav, mastered=new Set(), wrongSet=new Set(), basicWrongSet=new Set()}) {
+  const {isMobile}=useBP();
+  const today=new Date();
+  const todayText=today.toLocaleDateString("zh-CN");
+  const nextDay=new Date(today.getTime()+24*60*60*1000).toLocaleDateString("zh-CN");
+  const nextWeek=new Date(today.getTime()+7*24*60*60*1000).toLocaleDateString("zh-CN");
+  const print=()=>window.print();
+  const [studyPlan,setStudyPlan]=useState(null);
+  const token=window.__SHUMAI_TOKEN||localStorage.getItem("shumai_auth_token")||"";
+  useEffect(()=>{
+    if(!token) return;
+    let alive=true;
+    fetch(`${BACKEND_URL}/api/study-plan?subject=math`,{
+      headers:{Authorization:`Bearer ${token}`},
+    }).then(r=>r.ok?r.json():null).then(data=>{
+      if(alive) setStudyPlan(data?.plan||null);
+    }).catch(()=>{});
+    return()=>{alive=false;};
+  },[token]);
+  const weakTopics=[...TOPICS].filter(t=>!mastered.has(t.id)).sort((a,b)=>(b.freq||0)-(a.freq||0)).slice(0,3);
+  const wrongQs=EXAM_QS.filter(q=>wrongSet.has(q.id));
+  const basicReview=[...basicWrongSet].map(lookupBasicQ).filter(Boolean).slice(0,2);
+  const reviewWrong=wrongQs.slice(0,2);
+  const targetTopic=weakTopics[0]||TOPICS.find(t=>t.id==="linear_fn")||TOPICS[0];
+  const targetColor=DOM[targetTopic.domain]?.color||C.alg;
+  const recommendedQs=EXAM_QS.filter(q=>q.topic===targetTopic.id).sort((a,b)=>(a.diff||1)-(b.diff||1)).slice(0,3);
+  const planData=studyPlan?.plan_data||{};
+  const planGap=studyPlan?Math.max(0,Number(studyPlan.target_score||0)-Number(studyPlan.current_score||0)):null;
+  const targetDate=studyPlan?.target_date?new Date(studyPlan.target_date).toLocaleDateString("zh-CN"):null;
+  const minutes=Number(studyPlan?.daily_minutes||planData.dailyLoad?.match(/\d+/)?.[0]||45);
+  const planPhase=planData.phases?.[0]?.title
+    ? planData.phases.map(p=>`${p.title}${p.days?` ${p.days}天`:""}`).join(" / ")
+    : "补根基 / 提方法 / 稳输出";
+  const whyLine=wrongQs.length||basicReview.length
+    ? "这张纸优先处理最近错因，让屏幕里的判断落到手写步骤。"
+    : `这张纸先稳住「${targetTopic.name}」，用少量题验证今天的知识树节点。`;
+  const loadLine=minutes>=60
+    ? "今日纸面量偏完整：3 道推荐题 + 1 道错因追踪 + 下次复做安排。"
+    : minutes>=40
+      ? "今日纸面量保持中等：2-3 道推荐题 + 1 道错因追踪。"
+      : "今日纸面量保持轻：只完成 2 道题和一个错因记录。";
+  const clearSteps=[
+    ["第一次做错","记录错因"],
+    ["看提示做对","只看下一步"],
+    ["隔天独立做对",nextDay],
+    ["一周后独立做对",nextWeek],
+  ];
+  const printCard={border:"1px solid #cbd5e1",borderRadius:12,padding:14,background:"#fff"};
+  return(
+    <div style={{padding:isMobile?12:28,maxWidth:940,margin:"0 auto"}}>
+      <style>{`
+        @media print{
+          header, aside, nav, button{display:none!important}
+          body{background:#fff!important;color:#111!important}
+          .print-shell{padding:0!important;max-width:none!important}
+          .print-sheet{box-shadow:none!important;border:none!important;background:#fff!important;color:#111!important;padding:0!important}
+          .print-sheet *{color:#111!important}
+          .print-card{border:1px solid #111!important;background:#fff!important;break-inside:avoid}
+          .print-muted{color:#444!important}
+        }
+      `}</style>
+
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
+        <button onClick={()=>onNav("math")}
+          style={{padding:"8px 14px",borderRadius:9,cursor:"pointer",background:C.s2,color:C.text,border:`1px solid ${C.border}`,fontWeight:800}}>
+          ← 返回数学驾驶舱
+        </button>
+        <button onClick={()=>onNav("plan")}
+          style={{padding:"8px 14px",borderRadius:9,cursor:"pointer",background:C.purple+"12",color:C.purple,border:`1px solid ${C.purple}44`,fontWeight:800}}>
+          反向规划
+        </button>
+        <button onClick={print}
+          style={{marginLeft:isMobile?0:"auto",padding:"10px 18px",borderRadius:10,cursor:"pointer",background:C.gold,color:"#111",border:"none",fontWeight:950}}>
+          打印今日修复纸面
+        </button>
+      </div>
+
+      <div className="print-shell">
+        <div className="print-sheet" style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:18,padding:isMobile?18:28}}>
+          <header style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.25fr .75fr",gap:16,borderBottom:`1px solid ${C.border}`,paddingBottom:16,marginBottom:18}}>
+            <div>
+              <div style={{fontSize:13,color:C.gold,fontWeight:950,letterSpacing:2}}>树脉 AI 今日修复纸面</div>
+              <h1 style={{margin:"8px 0 8px",fontSize:isMobile?28:36,lineHeight:1.1,color:C.text,fontWeight:950}}>今日数学修复训练</h1>
+              <p className="print-muted" style={{margin:0,fontSize:15,color:C.muted,lineHeight:1.8}}>
+                {whyLine} 不是打印一堆题，而是把今天最该修的一段脉络落到纸上。
+              </p>
+            </div>
+            <div className="print-card" style={{...printCard,background:C.s2,borderColor:C.gold+"33"}}>
+              <div style={{fontSize:13,color:C.muted,lineHeight:1.9}}>
+                <div>日期：{todayText}</div>
+                <div>姓名：__________</div>
+                <div>目标节点：{targetTopic.name}</div>
+                <div>预计用时：{minutes} 分钟</div>
               </div>
             </div>
+          </header>
 
-            <div style={{flex:1}}>
-              <div style={{display:"flex",justifyContent:"space-between",
-                alignItems:"center",marginBottom:6}}>
-                <span style={{fontSize:13,fontWeight:700,color:C.muted}}>🃏 方法卡收集</span>
-                <span style={{fontSize:12,color:C.purple}}>{Math.min(mastered.size,23)}/23</span>
+          <section style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.1fr .9fr",gap:12,marginBottom:16}}>
+            <div className="print-card" style={{...printCard,background:C.s2,borderColor:targetColor+"33"}}>
+              <h2 style={{fontSize:18,color:C.text,margin:"0 0 8px"}}>一、今日目标</h2>
+              <div style={{fontSize:15,lineHeight:1.9,color:C.text}}>
+                先稳住「{targetTopic.name}」，完成推荐题、错因复盘和纸面归因。
               </div>
-              <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                {Array.from({length:23}).map((_,i)=>(
-                  <div key={i} style={{width:18,height:22,borderRadius:3,
-                    background:i<Math.min(mastered.size,23)?C.purple:C.s3,
-                    border:`1px solid ${i<Math.min(mastered.size,23)?C.purple+"66":C.border}`,
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    fontSize:7,color:i<Math.min(mastered.size,23)?"white":C.dim}}>
-                    {i<Math.min(mastered.size,23)?"✓":"?"}
-                  </div>
-                ))}
+              <div className="print-muted" style={{fontSize:13,color:C.muted,lineHeight:1.8,marginTop:8}}>{loadLine}</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>
+                {weakTopics.map(t=><Tag key={t.id} c={DOM[t.domain]?.color||C.alg}>{t.name}</Tag>)}
               </div>
-              {mastered.size>=23&&(
-                <div style={{marginTop:6,fontSize:12,color:C.gold,fontWeight:700}}>
-                  🏆 方法大师！已集齐全部23张
+            </div>
+            <div className="print-card" style={{...printCard,background:C.s2,borderColor:C.gold+"33"}}>
+              <h2 style={{fontSize:18,color:C.text,margin:"0 0 8px"}}>二、为什么打印</h2>
+              <div style={{fontSize:14,color:C.text,lineHeight:1.85}}>
+                屏幕负责判断，纸面负责稳定步骤。今天只处理一个节点和一个主要错因，做完后隔天再验证。
+              </div>
+              {studyPlan&&(
+                <div className="print-muted" style={{fontSize:13,color:C.muted,lineHeight:1.75,marginTop:8}}>
+                  目标计划：{studyPlan.current_score} → {studyPlan.target_score} 分
+                  {planGap!==null?`，差距 ${planGap} 分`:""}
+                  {targetDate?`，目标日期 ${targetDate}`:""}。阶段路线：{planPhase}。
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
-          {/* 右：雷达图 — 与左侧等高，固定宽度 */}
-          <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {(()=>{
-              const dims=[
-                {label:"代数",key:"algebra"},
-                {label:"几何",key:"geometry"},
-                {label:"统计",key:"stats"},
-                {label:"函数",key:"algebra"},
-                {label:"方法",key:"algebra"},
-                {label:"速度",key:"stats"},
-              ];
-              const domTopicCount={
-                algebra:TOPICS.filter(t=>t.domain==="algebra").length,
-                geometry:TOPICS.filter(t=>t.domain==="geometry").length,
-                stats:TOPICS.filter(t=>t.domain==="stats").length,
-              };
-              const domMastered={
-                algebra:TOPICS.filter(t=>t.domain==="algebra"&&mastered.has(t.id)).length,
-                geometry:TOPICS.filter(t=>t.domain==="geometry"&&mastered.has(t.id)).length,
-                stats:TOPICS.filter(t=>t.domain==="stats"&&mastered.has(t.id)).length,
-              };
-              const vals=dims.map(d=>{
-                const total=domTopicCount[d.key]||1;
-                const done=domMastered[d.key]||0;
-                return Math.max(0.08,done/total);
-              });
-              const cx=130,cy=105,r=80,n=6;
-              const pts=(radius)=>dims.map((_,i)=>{
-                const a=Math.PI*2*i/n-Math.PI/2;
-                return [cx+Math.cos(a)*radius,cy+Math.sin(a)*radius];
-              });
-              const grid3=pts(r),grid2=pts(r*0.66),grid1=pts(r*0.33);
-              const data=vals.map((v,i)=>{
-                const a=Math.PI*2*i/n-Math.PI/2;
-                return [cx+Math.cos(a)*r*v,cy+Math.sin(a)*r*v];
-              });
-              return(
-                <svg viewBox="0 0 260 210"
-                  style={{width:"100%",maxWidth:340,height:"auto"}}>
-                  <polygon points={grid3.map(p=>p.join(",")).join(" ")} fill="none" stroke={C.border} strokeWidth="1.2"/>
-                  <polygon points={grid2.map(p=>p.join(",")).join(" ")} fill="none" stroke={C.border} strokeWidth="0.8"/>
-                  <polygon points={grid1.map(p=>p.join(",")).join(" ")} fill="none" stroke={C.border} strokeWidth="0.8"/>
-                  {grid3.map((p,i)=><line key={i} x1={cx} y1={cy} x2={p[0]} y2={p[1]} stroke={C.border} strokeWidth="0.8"/>)}
-                  <polygon points={data.map(p=>p.join(",")).join(" ")} fill={C.alg+"44"} stroke={C.alg} strokeWidth="2.5"/>
-                  {data.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="4" fill={C.alg}/>)}
-                  {grid3.map((p,i)=>{
-                    const dx=p[0]>cx+5?11:p[0]<cx-5?-11:0;
-                    const dy=p[1]>cy+5?16:p[1]<cy-5?-8:4;
-                    return <text key={i} x={p[0]+dx} y={p[1]+dy} textAnchor="middle"
-                      style={{fontSize:13,fill:C.text,fontWeight:600}}>{dims[i].label}</text>;
-                  })}
-                </svg>
-              );
-            })()}
-          </div>
+          <section style={{marginBottom:16}}>
+            <h2 style={{fontSize:18,color:C.text,margin:"0 0 10px"}}>三、今日 3 件事</h2>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10}}>
+              {[
+                [`5 分钟复盘`,`写出「${targetTopic.name}」的定义、题眼和一个易错边界。`],
+                [`10 分钟针对练`,`完成 ${Math.min(recommendedQs.length||3,3)} 道推荐题，保留关键步骤。`],
+                [`1 道错因追踪`,`写出错误原因、正确入口和下次复做日期。`],
+              ].map(([title,body],i)=>(
+                <div key={title} className="print-card" style={{...printCard,background:C.s2}}>
+                  <div style={{fontSize:12,color:targetColor,fontWeight:950,marginBottom:6}}>0{i+1}</div>
+                  <div style={{fontSize:16,color:C.text,fontWeight:950,marginBottom:6}}>{title}</div>
+                  <div className="print-muted" style={{fontSize:13,color:C.muted,lineHeight:1.7}}>{body}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={{marginBottom:16}}>
+            <h2 style={{fontSize:18,color:C.text,margin:"0 0 10px"}}>四、推荐题</h2>
+            {(recommendedQs.length?recommendedQs:[1,2,3]).slice(0,3).map((q,i)=>(
+              <div key={q.id||i} className="print-card" style={{...printCard,minHeight:132,marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:10,marginBottom:8,alignItems:"center"}}>
+                  <div style={{fontSize:14,color:targetColor,fontWeight:950}}>
+                    第 {i+1} 题 {q.yr?` · ${q.yr}年 第${q.no}题 · ${"★".repeat(q.diff||1)}`:""}
+                  </div>
+                  <div className="print-muted" style={{fontSize:12,color:C.muted}}>自信度：1 2 3 4 5</div>
+                </div>
+                <div style={{fontSize:14,color:C.text,lineHeight:1.8}}>{q.content||"请从系统推荐题中抄写题目后完成。"}</div>
+                <div className="print-muted" style={{marginTop:10,minHeight:46,borderTop:`1px dashed ${C.border}`,paddingTop:8,fontSize:13,color:C.muted}}>
+                  作答区：
+                </div>
+              </div>
+            ))}
+          </section>
+
+          {(reviewWrong.length>0||basicReview.length>0)&&(
+            <section style={{marginBottom:16}}>
+              <h2 style={{fontSize:18,color:C.text,margin:"0 0 10px"}}>五、错题复盘</h2>
+              {[...reviewWrong,...basicReview].map((q,i)=>(
+                <div key={q.id||i} className="print-card" style={{...printCard,marginBottom:9}}>
+                  <div style={{fontSize:14,color:C.text,lineHeight:1.8}}>
+                    {i+1}. {q.yr?`${q.yr}年 第${q.no}题`:(q._label||"基础错题")}：{q.error||"写出这道题的错误原因。"}
+                  </div>
+                  <div className="print-muted" style={{fontSize:13,color:C.muted,marginTop:8}}>
+                    正确入口：____________________________________
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
+
+          <section style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:16}}>
+            <div className="print-card" style={printCard}>
+              <h2 style={{fontSize:18,color:C.text,margin:"0 0 10px"}}>六、错因记录</h2>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {["概念不清","公式记错","审题漏条件","计算失误","方法选择错误","其他：________"].map(x=>(
+                  <div key={x} style={{fontSize:14,color:C.text}}>□ {x}</div>
+                ))}
+              </div>
+              <div className="print-muted" style={{fontSize:13,color:C.muted,marginTop:12,lineHeight:1.8}}>
+                今天主要修复：____________________________
+              </div>
+            </div>
+            <div className="print-card" style={printCard}>
+              <h2 style={{fontSize:18,color:C.text,margin:"0 0 10px"}}>七、清除标准</h2>
+              {clearSteps.map(([label,desc],i)=>(
+                <div key={label} style={{display:"grid",gridTemplateColumns:"24px 1fr",gap:8,marginBottom:8}}>
+                  <span style={{fontSize:14,color:C.text}}>□</span>
+                  <div>
+                    <div style={{fontSize:14,color:C.text,fontWeight:800}}>{label}</div>
+                    <div className="print-muted" style={{fontSize:12,color:C.muted,marginTop:2}}>{desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="print-card" style={printCard}>
+            <h2 style={{fontSize:18,color:C.text,margin:"0 0 10px"}}>八、家长确认</h2>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,fontSize:14,color:C.text,lineHeight:1.9}}>
+              <div>完成情况：□ 已完成 □ 部分完成 □ 未完成</div>
+              <div>家长签字：____________</div>
+              <div>下次复做：□ {nextDay} □ {nextWeek}</div>
+              <div>鼓励一句：________________________</div>
+            </div>
+          </section>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* H3 分数预测曲线 */}
-      {(()=>{
-        // 基于掌握度×考频权重计算预测分
-        const totalScore=120; // 中考数学满分120
-        let weightedSum=0, weightTotal=0;
-        TOPICS.forEach(t=>{
-          const w=t.freq||1;
-          weightTotal+=w;
-          if(mastered.has(t.id)) weightedSum+=w;
-        });
-        const predictPct=weightTotal>0?weightedSum/weightTotal:0;
-        const predictScore=Math.round(predictPct*totalScore);
-
-        // 模拟历史曲线（基于当前掌握度推算趋势）
-        const mCount=mastered.size;
-        const dataPoints=[];
-        const steps=[0,10,25,50,80,120,mCount>140?mCount:140,194];
-        for(const s of steps){
-          if(s>mCount+20) break;
-          const simPct=s/194;
-          // 非线性映射：低掌握度时分数增长快（基础题容易得分）
-          const scorePct=Math.min(1,simPct*0.5+simPct*simPct*0.5);
-          dataPoints.push({topics:s,score:Math.round(scorePct*totalScore),current:s<=mCount});
-        }
-        // 确保最后一个点是当前值
-        if(!dataPoints.find(p=>p.topics===mCount)){
-          dataPoints.push({topics:mCount,score:predictScore,current:true});
-          dataPoints.sort((a,b)=>a.topics-b.topics);
-        }
-
-        const W=isMobile?280:400, H=140, PX=40, PY=20;
-        const chartW=W-PX-10, chartH=H-PY-20;
-        const toX=v=>PX+v/194*chartW;
-        const toY=v=>H-PY-v/totalScore*chartH;
-
-        return (
-          <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:22,marginBottom:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-              <h3 style={{margin:0,fontSize:17,color:C.text,textTransform:"uppercase",letterSpacing:1}}>
-                📈 分数预测
-              </h3>
-              <div style={{textAlign:"right"}}>
-                <span style={{fontSize:32,fontWeight:900,color:predictScore>=100?C.ok:predictScore>=80?C.sta:C.red}}>
-                  {predictScore}
-                </span>
-                <span style={{fontSize:16,color:C.muted}}>/{totalScore}</span>
-              </div>
-            </div>
-            <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",maxWidth:W}}>
-              {/* 网格线 */}
-              {[0,30,60,90,120].map(v=>(
-                <g key={v}>
-                  <line x1={PX} y1={toY(v)} x2={W-10} y2={toY(v)}
-                    stroke={C.border} strokeWidth={0.5} strokeDasharray="3,3"/>
-                  <text x={PX-6} y={toY(v)+4} textAnchor="end" fontSize={10} fill={C.dim}>{v}</text>
-                </g>
-              ))}
-              {/* 区域填充 */}
-              <polygon
-                points={`${dataPoints.map(p=>`${toX(p.topics)},${toY(p.score)}`).join(" ")} ${toX(dataPoints[dataPoints.length-1].topics)},${toY(0)} ${toX(0)},${toY(0)}`}
-                fill={C.alg} fillOpacity={0.08}/>
-              {/* 曲线 */}
-              <polyline
-                points={dataPoints.map(p=>`${toX(p.topics)},${toY(p.score)}`).join(" ")}
-                fill="none" stroke={C.alg} strokeWidth={2.5} strokeLinejoin="round"/>
-              {/* 数据点 */}
-              {dataPoints.map((p,i)=>(
-                <circle key={i} cx={toX(p.topics)} cy={toY(p.score)} r={p.topics===mCount?5:3}
-                  fill={p.topics===mCount?C.sta:C.alg} stroke={p.topics===mCount?"white":"none"} strokeWidth={2}/>
-              ))}
-              {/* 当前点标注 */}
-              <text x={toX(mCount)} y={toY(predictScore)-10}
-                textAnchor="middle" fontSize={12} fontWeight={700} fill={C.sta}>
-                你在这里
-              </text>
-              {/* X轴标签 */}
-              <text x={PX} y={H-4} fontSize={10} fill={C.dim}>0</text>
-              <text x={toX(100)} y={H-4} textAnchor="middle" fontSize={10} fill={C.dim}>100</text>
-              <text x={toX(194)} y={H-4} textAnchor="end" fontSize={10} fill={C.dim}>194知识点</text>
-            </svg>
-            <div style={{display:"flex",justifyContent:"space-between",marginTop:8,fontSize:13}}>
-              <span style={{color:C.muted}}>掌握{mCount}个知识点</span>
-              <span style={{color:predictScore>=100?C.ok:predictScore>=80?C.sta:C.red,fontWeight:700}}>
-                {predictScore>=110?"🌟 优秀":predictScore>=100?"✅ 良好":predictScore>=80?"📈 中等":"💪 继续加油"}
-              </span>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* High freq topics */}
-      <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:22}}>
-        <h3 style={{margin:"0 0 14px",fontSize:17,color:C.text,textTransform:"uppercase",letterSpacing:1}}>
-          🔥 高频考点 TOP 6
-        </h3>
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10}}>
-          {topFreq.map((t,i)=>{
-            const c=DOM[t.domain].color,isM=mastered.has(t.id);
+function CoachWorkbench({q, topicName}) {
+  const [confidence,setConfidence]=useState(3);
+  const [minutes,setMinutes]=useState(4);
+  const [selectedTags,setSelectedTags]=useState([]);
+  const errorTags=[
+    {label:"概念不清",color:C.alg},
+    {label:"公式记错",color:C.sta},
+    {label:"审题漏条件",color:C.red},
+    {label:"计算失误",color:C.geo},
+    {label:"方法选择错误",color:C.purple},
+  ];
+  const toggleTag=(label)=>setSelectedTags(prev=>prev.includes(label)?prev.filter(x=>x!==label):[...prev,label]);
+  return(
+    <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr",gap:10}}>
+      <div style={{background:C.s2,border:`1px solid ${C.border}`,borderRadius:10,padding:12}}>
+        <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:8}}>作答区</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <label style={{fontSize:12,color:C.muted}}>
+            自信度 {confidence}/5
+            <input type="range" min="1" max="5" value={confidence}
+              onChange={e=>setConfidence(Number(e.target.value))}
+              style={{width:"100%",accentColor:C.alg,marginTop:6}}/>
+          </label>
+          <label style={{fontSize:12,color:C.muted}}>
+            用时 {minutes} 分钟
+            <input type="range" min="1" max="20" value={minutes}
+              onChange={e=>setMinutes(Number(e.target.value))}
+              style={{width:"100%",accentColor:C.geo,marginTop:6}}/>
+          </label>
+        </div>
+      </div>
+      <div style={{background:C.s2,border:`1px solid ${C.border}`,borderRadius:10,padding:12}}>
+        <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:8}}>归因区</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {errorTags.map(tag=>{
+            const active=selectedTags.includes(tag.label);
             return(
-              <div key={t.id} onClick={()=>onNav("detail",t.id)}
-                style={{background:C.s2,border:`1px solid ${isM?C.ok+"44":c+"18"}`,
-                  borderRadius:10,padding:"12px 14px",cursor:"pointer",
-                  display:"flex",alignItems:"center",gap:10,transition:"all .2s"}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor=c+"66"}
-                onMouseLeave={e=>e.currentTarget.style.borderColor=isM?C.ok+"44":c+"18"}>
-                <div style={{fontSize:24,fontWeight:900,color:C.dim,minWidth:24}}>#{i+1}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:17,fontWeight:700,color:isM?C.ok:C.text}}>{t.name}</div>
-                  <div style={{fontSize:14,color:C.muted}}>考{t.examYears.length}年·{t.totalScore}分</div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:22,fontWeight:900,color:c}}>{t.freq}%</div>
-                  {isM&&<div style={{fontSize:14,color:C.ok}}>✓已掌握</div>}
-                </div>
-              </div>
+              <button key={tag.label} onClick={()=>toggleTag(tag.label)}
+                style={{padding:"5px 10px",borderRadius:20,cursor:"pointer",fontSize:12,fontWeight:800,
+                  background:active?tag.color+"24":tag.color+"10",color:tag.color,
+                  border:`1px solid ${active?tag.color+"88":tag.color+"30"}`}}>
+                {active?"✓ ":""}{tag.label}
+              </button>
             );
           })}
         </div>
+        <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginTop:8}}>
+          {selectedTags.length?`本题先按「${selectedTags.join("、")}」修复，隔天再独立复做。`:"先选一个最像的错因，不急着给自己贴“不会”的标签。"}
+        </div>
+      </div>
+      <div style={{background:"#a78bfa0d",border:`1px solid ${C.purple}25`,borderRadius:10,padding:12}}>
+        <div style={{fontSize:14,fontWeight:800,color:C.purple,marginBottom:8}}>AI 教练区</div>
+        <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginBottom:10}}>
+          默认先看提示。只有提示后仍卡住，再打开讲解；错题复盘时用追问模式找病根。
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <AskTutor q={q} topicName={topicName} mode="hint" label="提示模式"/>
+          <AskTutor q={q} topicName={topicName} mode="explain" label="讲解模式"/>
+          <AskTutor q={q} topicName={topicName} mode="wrong" label="追问模式"/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuestionCoachCard({q, topicName, topicColor=C.alg, isWrong=false, onToggleWrong=()=>{}, solOpen=false, onToggleSol=()=>{}}) {
+  const {isMobile}=useBP();
+  const methodNames=(q.methods||[]).map(mid=>METHODS.find(x=>x.id===mid)?.name).filter(Boolean);
+  return(
+    <div style={{background:C.s1,border:`1px solid ${isWrong?C.red+"42":topicColor+"24"}`,
+      borderRadius:14,padding:isMobile?14:18,marginBottom:14}}>
+      <div style={{display:"flex",gap:7,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+        {q.yr&&<Tag c={topicColor}>{q.yr}年</Tag>}
+        {q.no&&<Tag c={C.muted}>第{q.no}题</Tag>}
+        <Tag c={C.muted}>{q.type==="choice"?"选择":q.type==="fill"?"填空":"解答"}</Tag>
+        {q.score&&<Tag c={C.muted}>{q.score}分</Tag>}
+        <div style={{display:"flex",gap:2}}>
+          {[1,2,3,4,5].map(i=><span key={i} style={{fontSize:14,color:i<=q.diff?C.gold:C.dim}}>★</span>)}
+        </div>
+        {methodNames.map(name=><Tag key={name} c={C.purple} sm>{name}</Tag>)}
+        {isWrong&&<Tag c={C.red} sm>错题本</Tag>}
+        <button onClick={onToggleWrong}
+          style={{marginLeft:"auto",fontSize:13,padding:"5px 10px",borderRadius:8,cursor:"pointer",
+            background:isWrong?C.red+"1a":"transparent",color:isWrong?C.red:C.muted,
+            border:`1px solid ${isWrong?C.red+"55":C.border}`}}>
+          {isWrong?"✓ 已加错题本":"+ 错题本"}
+        </button>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"minmax(0,1.1fr) minmax(300px,.9fr)",gap:14,alignItems:"start"}}>
+        <section style={{background:C.s2,border:`1px solid ${topicColor}28`,borderRadius:12,padding:isMobile?14:16}}>
+          <div style={{fontSize:12,color:topicColor,fontWeight:900,letterSpacing:1,marginBottom:10}}>题目区</div>
+          <p style={{margin:0,fontSize:isMobile?17:18,color:C.text,lineHeight:1.9}}>{q.content}</p>
+          {q.svg&&<div style={{marginTop:10,overflowX:"auto"}} dangerouslySetInnerHTML={{__html:q.svg}}/>}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
+            <button onClick={onToggleSol}
+              style={{padding:"8px 13px",borderRadius:9,cursor:"pointer",fontSize:14,fontWeight:900,
+                background:solOpen?C.geo+"20":"transparent",color:C.geo,border:`1px solid ${C.geo}55`}}>
+              {solOpen?"收起完整解析":"做完后查看解析"}
+            </button>
+            <VideoExplainButton questionId={q.id}/>
+          </div>
+          {solOpen&&(
+            <div style={{marginTop:12,background:C.geo+"0a",border:`1px solid ${C.geo}22`,borderRadius:10,padding:14}}>
+              <div style={{fontSize:16,fontWeight:900,color:C.gold,marginBottom:8}}>答案：{q.answer}</div>
+              <pre style={{margin:"0 0 10px",fontSize:16,color:C.text,lineHeight:1.9,
+                whiteSpace:"pre-wrap",fontFamily:"inherit"}}>{q.sol}</pre>
+              <div style={{padding:"8px 11px",background:C.red+"0d",borderRadius:7,fontSize:15,color:C.red,lineHeight:1.7}}>
+                易错点：{q.error||"先检查题眼、条件和计算过程。"}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <aside style={{background:`linear-gradient(180deg,${C.purple}10,${C.s2})`,
+          border:`1px solid ${C.purple}28`,borderRadius:12,padding:isMobile?14:16}}>
+          <div style={{fontSize:12,color:C.purple,fontWeight:900,letterSpacing:1,marginBottom:8}}>AI 教练场</div>
+          <div style={{fontSize:17,color:C.text,fontWeight:900,lineHeight:1.55,marginBottom:8}}>
+            先别急着看答案。先判断：这道题第一步该抓哪个条件？
+          </div>
+          <div style={{fontSize:13,color:C.muted,lineHeight:1.75,marginBottom:10}}>
+            教练会先给下一步提示，再根据你的错因逐步讲解。做错不是失败，是系统发现了一根还没稳的树枝。
+          </div>
+          <CoachWorkbench q={q} topicName={topicName}/>
+        </aside>
       </div>
     </div>
   );
@@ -1318,7 +2334,7 @@ function PageHome({mastered,wrongSet,progress,onNav}) {
    ( function PageGraph 到其对应闭合括号 )
 ════════════════════════════════════════════════════════════ */
 
-function PageGraph({mastered,onNav}) {
+function PageGraphLegacy({mastered,onNav}) {
   const {isMobile}=useBP();
   const [domFilter,setDomFilter]=useState("all");
   const [semFilter,setSemFilter]=useState("all");
@@ -1359,6 +2375,16 @@ function PageGraph({mastered,onNav}) {
     const relTopics=(selTopic.rel||[]).map(id=>TOPIC_MAP[id]).filter(Boolean);
     return{pre:preTopics,rel:relTopics};
   },[sel]);
+  const selAction=useMemo(()=>{
+    if(!selTopic) return null;
+    const isMastered=mastered.has(selTopic.id);
+    const recentWrong=EXAM_QS.filter(q=>q.topic===selTopic.id).slice(0,3);
+    const recommended=EXAM_QS.filter(q=>q.topic===selTopic.id).sort((a,b)=>(a.diff||1)-(b.diff||1)).slice(0,3);
+    const next=(selTopic.rel||[]).map(id=>TOPIC_MAP[id]).filter(Boolean)[0]||null;
+    const status=isMastered?"已掌握":recentWrong.length>0?"巩固中":"薄弱";
+    const color=isMastered?C.ok:status==="巩固中"?C.alg:C.red;
+    return{status,color,recentWrong,recommended,next};
+  },[selTopic,mastered]);
 
   const filteredSems=SEM_LIST.filter(s=>semFilter==="all"||s===semFilter);
   const totalShown=tree.reduce((a,r)=>a+r.total,0);
@@ -1536,6 +2562,50 @@ function PageGraph({mastered,onNav}) {
           )}
 
           {/* 操作按钮 */}
+          {selAction&&(
+            <div style={{marginTop:12,display:"grid",gridTemplateColumns:isMobile?"1fr":"1.1fr 1fr 1fr",gap:10}}>
+              <div style={{background:C.s1,border:`1px solid ${selAction.color}25`,borderRadius:10,padding:12}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:5}}>当前状态</div>
+                <div style={{fontSize:18,fontWeight:900,color:selAction.color}}>{selAction.status}</div>
+                <div style={{fontSize:12,color:C.muted,lineHeight:1.6,marginTop:5}}>
+                  {selAction.status==="已掌握"?"可以进入关联知识或真题综合。":"先补前置，再做 3 道推荐题验证。"}
+                </div>
+              </div>
+              <div style={{background:C.s1,border:`1px solid ${C.alg}22`,borderRadius:10,padding:12}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:6}}>推荐 3 题</div>
+                {selAction.recommended.length?selAction.recommended.map(q=>(
+                  <div key={q.id} style={{fontSize:12,color:C.text,marginBottom:5}}>
+                    {q.yr}年 第{q.no}题 · {"★".repeat(q.diff||1)}
+                  </div>
+                )):<div style={{fontSize:12,color:C.muted}}>暂无真题，先学基础知识</div>}
+              </div>
+              <div style={{background:C.s1,border:`1px solid ${C.purple}22`,borderRadius:10,padding:12}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:6}}>下一节点</div>
+                {selAction.next?(
+                  <button onClick={()=>setSel(selAction.next.id)}
+                    style={{fontSize:13,color:C.purple,background:"none",border:"none",padding:0,cursor:"pointer",fontWeight:800}}>
+                    {selAction.next.name} →
+                  </button>
+                ):<div style={{fontSize:12,color:C.muted}}>暂无下一节点</div>}
+                <div style={{fontSize:12,color:C.muted,lineHeight:1.6,marginTop:6}}>
+                  点击后继续沿知识脉络推进。
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selAction&&selAction.recentWrong.length>0&&(
+            <div style={{marginTop:10,padding:10,borderRadius:10,background:C.red+"0d",border:`1px solid ${C.red}22`}}>
+              <div style={{fontSize:12,color:C.red,fontWeight:800,marginBottom:5}}>最近相关错题</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {selAction.recentWrong.map(q=>(
+                  <Tag key={q.id} c={C.red} sm>{q.yr}年 第{q.no}题</Tag>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 操作按钮 */}
           <div style={{display:"flex",gap:8,marginTop:10}}>
             <button onClick={()=>onNav("detail",selTopic.id)}
               style={{padding:"6px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,
@@ -1543,9 +2613,223 @@ function PageGraph({mastered,onNav}) {
                 border:`1px solid ${DOM[selTopic.domain]?.color}44`}}>
               查看完整知识点 →
             </button>
+            <button onClick={()=>onNav("practice")}
+              style={{padding:"6px 16px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600,
+                background:C.alg+"12",color:C.alg,border:`1px solid ${C.alg}33`}}>
+              去练推荐题 →
+            </button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PageGraph({mastered,onNav}) {
+  const {isMobile}=useBP();
+  const [domFilter,setDomFilter]=useState("all");
+  const [semFilter,setSemFilter]=useState("all");
+  const SEM_LIST=["7a","7b","8a","8b","9a","9b"];
+  const SEM_LABEL={"7a":"七年级上","7b":"七年级下","8a":"八年级上","8b":"八年级下","9a":"九年级上","9b":"九年级下"};
+  const SEM_COLOR={"7a":"#4ade80","7b":"#22d3ee","8a":"#818cf8","8b":"#f472b6","9a":"#fb923c","9b":"#facc15"};
+  const CHAP_NAME={
+    ch_7a_2:"有理数",ch_7a_3:"代数式",ch_7a_4:"图形认识",ch_7a_5:"一元一次方程",ch_7a_6:"统计图",ch_7a_7:"可能性",
+    ch_7b_1:"整式运算",ch_7b_2:"平行线",ch_7b_3:"变量",ch_7b_4:"全等三角形",ch_7b_5:"轴对称",
+    ch_8a_1:"勾股定理",ch_8a_2:"实数与根式",ch_8a_3:"坐标系",ch_8a_4:"一次函数",ch_8a_5:"方程组",ch_8a_6:"数据分析",
+    ch_8b_1:"等腰三角形",ch_8b_2:"不等式",ch_8b_3:"变换",ch_8b_4:"因式分解",ch_8b_5:"分式",ch_8b_6:"四边形",ch_8b_7:"相似",ch_8b_8:"数据收集",
+    ch_9a_1:"特殊四边形",ch_9a_2:"一元二次方程",ch_9a_4:"视图投影",ch_9a_5:"反比例函数",ch_9a_6:"概率",
+    ch_9b_1:"三角函数",ch_9b_2:"二次函数",ch_9b_3:"圆",ch_9b_4:"统计概率综合"
+  };
+  const getTopicStatus=(topic)=>{
+    const isMastered=mastered.has(topic.id);
+    const hasPreGap=(GRAPH[topic.id]?.pre||topic.pre||[]).some(pid=>!mastered.has(pid));
+    if(isMastered) return {label:"已掌握",color:C.ok,desc:"可以进入关联知识或真题综合。"};
+    if(hasPreGap) return {label:"薄弱",color:C.red,desc:"前置知识还没稳定，先向下补根。"};
+    if((topic.freq||0)>=70) return {label:"巩固中",color:C.alg,desc:"高频节点，适合用推荐题验证稳定性。"};
+    return {label:"未学",color:C.muted,desc:"还没有开始，先看概念和常例。"};
+  };
+  const defaultTopic=useMemo(()=>[...TOPICS].filter(t=>!mastered.has(t.id)).sort((a,b)=>(b.freq||0)-(a.freq||0))[0]||TOPICS[0],[mastered]);
+  const [sel,setSel]=useState(defaultTopic?.id||TOPICS[0]?.id);
+  const selTopic=TOPIC_MAP[sel]||defaultTopic;
+  const selectedStatus=selTopic?getTopicStatus(selTopic):null;
+  const filteredTopics=TOPICS.filter(t=>(domFilter==="all"||t.domain===domFilter)&&(semFilter==="all"||t.semester===semFilter));
+  const conn=useMemo(()=>{
+    if(!selTopic) return {pre:[],rel:[],next:null};
+    const graph=GRAPH[selTopic.id]||{};
+    const pre=(graph.pre||selTopic.pre||[]).map(id=>TOPIC_MAP[id]).filter(Boolean);
+    const rel=[...(graph.next||[]),...(selTopic.rel||[])].filter((id,i,arr)=>arr.indexOf(id)===i).map(id=>TOPIC_MAP[id]).filter(Boolean);
+    return {pre,rel,next:rel.find(t=>!mastered.has(t.id))||rel[0]||null};
+  },[selTopic,mastered]);
+  const recommended=selTopic?EXAM_QS.filter(q=>q.topic===selTopic.id).sort((a,b)=>(a.diff||1)-(b.diff||1)).slice(0,3):[];
+  const recentWrong=selTopic?EXAM_QS.filter(q=>q.topic===selTopic.id&&(q.diff||1)>=3).slice(0,3):[];
+  const routeRows=SEM_LIST.map(sem=>{
+    const topics=filteredTopics.filter(t=>t.semester===sem);
+    const chapMap={};
+    topics.forEach(t=>{const ch=t.chapter||"other"; if(!chapMap[ch]) chapMap[ch]=[]; chapMap[ch].push(t);});
+    return {sem,topics,chapters:Object.entries(chapMap).map(([ch,ts])=>({ch,name:CHAP_NAME[ch]||ch,topics:ts}))};
+  }).filter(r=>r.topics.length);
+  const domainStats=Object.entries(DOM).map(([key,d])=>{
+    const list=TOPICS.filter(t=>t.domain===key);
+    const done=list.filter(t=>mastered.has(t.id)).length;
+    return {key,d,total:list.length,done,pct:Math.round(done/Math.max(list.length,1)*100)};
+  });
+
+  return(
+    <div style={{padding:isMobile?12:24,maxWidth:1180,margin:"0 auto"}}>
+      <section style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:16,padding:isMobile?18:22,marginBottom:14}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.3fr .7fr",gap:18}}>
+          <div>
+            <div style={{fontSize:12,color:C.geo,fontWeight:900,letterSpacing:3,textTransform:"uppercase",marginBottom:8}}>Knowledge Tree Action Map</div>
+            <h1 style={{margin:"0 0 10px",fontSize:isMobile?30:42,lineHeight:1.08,color:C.text,fontWeight:950}}>知识树行动页</h1>
+            <p style={{margin:0,fontSize:15,color:C.muted,lineHeight:1.85,maxWidth:760}}>
+              这里不是地图陈列。每个节点都要回答：我卡在哪根树枝上，先修什么，做哪三题，下一步往哪里走。
+            </p>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {["未学","薄弱","巩固中","已掌握"].map(label=>{
+              const color=label==="已掌握"?C.ok:label==="薄弱"?C.red:label==="巩固中"?C.alg:C.muted;
+              const val=TOPICS.filter(t=>getTopicStatus(t).label===label).length;
+              return <div key={label} style={{background:C.s2,border:`1px solid ${color}28`,borderRadius:11,padding:12}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:6}}>{label}</div>
+                <div style={{fontSize:24,fontWeight:950,color}}>{val}</div>
+              </div>;
+            })}
+          </div>
+        </div>
+      </section>
+
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        {Object.entries(DOM).map(([k,d])=>(
+          <button key={k} onClick={()=>setDomFilter(domFilter===k?"all":k)}
+            style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:800,
+              color:domFilter===k||domFilter==="all"?d.color:C.muted,
+              background:domFilter===k?d.color+"18":"transparent",
+              border:`1px solid ${domFilter===k?d.color:C.border}`,
+              borderRadius:20,padding:"5px 11px",cursor:"pointer"}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:d.color}}/>{d.name}
+          </button>
+        ))}
+        <div style={{width:1,height:22,background:C.border,margin:"0 2px"}}/>
+        {["all",...SEM_LIST].map(s=>(
+          <button key={s} onClick={()=>setSemFilter(semFilter===s?"all":s)}
+            style={{fontSize:12,padding:"5px 10px",borderRadius:13,cursor:"pointer",fontWeight:800,
+              background:semFilter===s?C.alg+"22":"transparent",
+              border:`1px solid ${semFilter===s?C.alg:C.border}`,
+              color:semFilter===s?C.alg:C.muted}}>
+            {s==="all"?"全部":SEM_LABEL[s]||s}
+          </button>
+        ))}
+      </div>
+
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"minmax(0,1.08fr) minmax(330px,.92fr)",gap:14,alignItems:"start"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {routeRows.map(row=>{
+            const sc=SEM_COLOR[row.sem],done=row.topics.filter(t=>mastered.has(t.id)).length;
+            const pct=Math.round(done/Math.max(row.topics.length,1)*100);
+            return <div key={row.sem} style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,overflow:"hidden"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:sc+"0a",borderBottom:`1px solid ${C.border}`}}>
+                <div style={{width:4,height:30,borderRadius:2,background:sc}}/>
+                <div style={{minWidth:96}}><div style={{fontSize:15,fontWeight:950,color:sc}}>{SEM_LABEL[row.sem]}</div><div style={{fontSize:11,color:C.muted,marginTop:3}}>{done}/{row.topics.length} 已掌握</div></div>
+                <Bar v={pct} color={sc} h={6}/>
+                <span style={{fontSize:13,color:sc,fontWeight:900,width:42,textAlign:"right"}}>{pct}%</span>
+              </div>
+              <div style={{padding:12}}>
+                {row.chapters.map(ch=><div key={ch.ch} style={{marginBottom:12}}>
+                  <div style={{fontSize:12,color:C.muted,fontWeight:900,letterSpacing:1,marginBottom:7}}>{ch.name}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                    {ch.topics.map(topic=>{
+                      const st=getTopicStatus(topic),isSel=selTopic?.id===topic.id;
+                      const connected=conn.pre.some(p=>p.id===topic.id)||conn.rel.some(r=>r.id===topic.id);
+                      return <button key={topic.id} onClick={()=>setSel(topic.id)}
+                        style={{padding:"7px 10px",borderRadius:9,cursor:"pointer",display:"flex",alignItems:"center",gap:6,
+                          fontSize:13,fontWeight:isSel?950:800,background:isSel?st.color+"22":connected?st.color+"12":C.s2,
+                          color:isSel?st.color:C.text,border:`1px solid ${isSel?st.color:connected?st.color+"55":C.border}`}}>
+                        <span style={{width:7,height:7,borderRadius:"50%",background:st.color}}/>{topic.name}{(topic.freq||0)>=80&&<span style={{fontSize:10,color:C.gold}}>★</span>}
+                      </button>;
+                    })}
+                  </div>
+                </div>)}
+              </div>
+            </div>;
+          })}
+        </div>
+
+        {selTopic&&selectedStatus&&(
+          <aside style={{position:isMobile?"static":"sticky",top:86,background:C.s1,border:`1px solid ${selectedStatus.color}46`,borderRadius:16,padding:isMobile?16:18}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:12}}>
+              <div>
+                <div style={{fontSize:12,color:selectedStatus.color,fontWeight:900,letterSpacing:2,marginBottom:7}}>当前行动节点</div>
+                <h2 style={{margin:"0 0 8px",fontSize:24,color:C.text,fontWeight:950,lineHeight:1.25}}>{selTopic.name}</h2>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <Tag c={DOM[selTopic.domain]?.color||C.alg}>{DOM[selTopic.domain]?.name}</Tag>
+                  <Tag c={C.muted}>{SEM_LABEL[selTopic.semester]}</Tag>
+                  <Tag c={selectedStatus.color}>{selectedStatus.label}</Tag>
+                </div>
+              </div>
+              <button onClick={()=>onNav("detail",selTopic.id)} style={{padding:"8px 10px",borderRadius:9,cursor:"pointer",fontSize:13,fontWeight:900,background:selectedStatus.color+"18",color:selectedStatus.color,border:`1px solid ${selectedStatus.color}42`}}>打开</button>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+              {[["掌握度",mastered.has(selTopic.id)?"稳定":"待验证",mastered.has(selTopic.id)?C.ok:selectedStatus.color],["考频",`${selTopic.freq||0}%`,DOM[selTopic.domain]?.color||C.alg],["累计分",`${selTopic.totalScore||0}分`,C.gold],["难度","●".repeat(selTopic.diff||1)+"○".repeat(5-(selTopic.diff||1)),C.purple]].map(([label,val,color])=>(
+                <div key={label} style={{background:C.s2,border:`1px solid ${color}24`,borderRadius:10,padding:10}}>
+                  <div style={{fontSize:11,color:C.muted,marginBottom:5}}>{label}</div><div style={{fontSize:15,fontWeight:950,color,lineHeight:1.35}}>{val}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{background:C.s2,border:`1px solid ${selectedStatus.color}28`,borderRadius:11,padding:12,marginBottom:12}}>
+              <div style={{fontSize:13,color:selectedStatus.color,fontWeight:950,marginBottom:6}}>AI 路线判断</div>
+              <div style={{fontSize:14,color:C.text,lineHeight:1.8}}>{selectedStatus.desc} {conn.pre.some(p=>!mastered.has(p.id))?"先补未稳前置，再做推荐题。":"可以直接用推荐题验证稳定性。"}</div>
+            </div>
+
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:13,color:C.muted,fontWeight:900,marginBottom:7}}>先修知识</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {conn.pre.length?conn.pre.map(p=>{
+                  const st=getTopicStatus(p);
+                  return <button key={p.id} onClick={()=>setSel(p.id)} style={{padding:"6px 9px",borderRadius:8,cursor:"pointer",fontSize:12,background:st.color+"12",border:`1px solid ${st.color}35`,color:st.color,fontWeight:800}}>{p.name}{mastered.has(p.id)?" ✓":""}</button>;
+                }):<span style={{fontSize:13,color:C.muted}}>这是当前枝干的起点之一。</span>}
+              </div>
+            </div>
+
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:13,color:C.muted,fontWeight:900,marginBottom:7}}>推荐 3 题</div>
+              {recommended.length?recommended.map(q=>(
+                <button key={q.id} onClick={()=>onNav("detail",selTopic.id)} style={{width:"100%",display:"flex",justifyContent:"space-between",gap:8,padding:"9px 10px",borderRadius:9,cursor:"pointer",marginBottom:7,textAlign:"left",background:C.s2,border:`1px solid ${C.alg}22`,color:C.text}}>
+                  <span style={{fontSize:13}}>{q.yr}年 第{q.no}题</span><span style={{fontSize:12,color:C.gold}}>{"★".repeat(q.diff||1)}</span>
+                </button>
+              )):<div style={{fontSize:13,color:C.muted,lineHeight:1.7}}>暂无真题，先进入完整知识点看基础讲解。</div>}
+            </div>
+
+            {recentWrong.length>0&&<div style={{background:C.red+"0d",border:`1px solid ${C.red}24`,borderRadius:11,padding:12,marginBottom:12}}>
+              <div style={{fontSize:13,color:C.red,fontWeight:950,marginBottom:7}}>最近错题线索</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{recentWrong.map(q=><Tag key={q.id} c={C.red} sm>{q.yr}年 第{q.no}题</Tag>)}</div>
+            </div>}
+
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:13,color:C.muted,fontWeight:900,marginBottom:7}}>下一节点</div>
+              {conn.next?<button onClick={()=>setSel(conn.next.id)} style={{width:"100%",padding:"10px 12px",borderRadius:10,cursor:"pointer",background:C.purple+"14",border:`1px solid ${C.purple}35`,color:C.purple,fontSize:14,fontWeight:950,textAlign:"left"}}>{conn.next.name} →</button>:<div style={{fontSize:13,color:C.muted}}>这根枝干暂时到顶，可以进入综合真题。</div>}
+            </div>
+
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={()=>onNav("detail",selTopic.id)} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",fontSize:13,fontWeight:900,background:selectedStatus.color+"18",color:selectedStatus.color,border:`1px solid ${selectedStatus.color}42`}}>AI 讲解</button>
+              <button onClick={()=>onNav("practice")} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",fontSize:13,fontWeight:900,background:C.alg+"18",color:C.alg,border:`1px solid ${C.alg}42`}}>去练推荐题</button>
+              <button onClick={()=>onNav("modules")} style={{padding:"9px 12px",borderRadius:9,cursor:"pointer",fontSize:13,fontWeight:900,background:C.geo+"18",color:C.geo,border:`1px solid ${C.geo}42`}}>数学底座</button>
+            </div>
+          </aside>
+        )}
+      </section>
+
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10,marginTop:14}}>
+        {domainStats.map(s=><div key={s.key} style={{background:C.s1,border:`1px solid ${s.d.color}25`,borderRadius:12,padding:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:8}}>
+            <span style={{fontSize:15,color:s.d.color,fontWeight:950}}>{s.d.name}</span>
+            <span style={{fontSize:18,color:s.d.color,fontWeight:950}}>{s.pct}%</span>
+          </div>
+          <Bar v={s.pct} color={s.d.color} h={7}/>
+          <div style={{fontSize:12,color:C.muted,marginTop:8}}>{s.done}/{s.total} 个节点稳定</div>
+        </div>)}
+      </section>
     </div>
   );
 }
@@ -1567,6 +2851,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
   const [m2Mode,setM2Mode]=useState("all");
   // TTS 语音讲解状态
   const [ttsId,setTtsId]=useState(null);
+  const [ttsPaused,setTtsPaused]=useState(false);
   const [ttsLoading,setTtsLoading]=useState(null);
   const [ttsText,setTtsText]=useState({});
   // M3 题组训练状态
@@ -1624,14 +2909,18 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
   // 点击语音讲解按钮
   const handleSpeak = async (q, topicId) => {
     const topicName = TOPIC_MAP[topicId]?.name || "本题";
-    // 如果正在朗读同一题，则停止
-    if (ttsId === q.id) { stopSpeak(); setTtsId(null); return; }
+    // 如果正在朗读同一题，则暂停/继续
+    if (ttsId === q.id) {
+      if (ttsPaused) { resumeSpeak(); setTtsPaused(false); }
+      else { pauseSpeak(); setTtsPaused(true); }
+      return;
+    }
     // 停止其他正在播放的
-    stopSpeak(); setTtsId(null);
+    stopSpeak(); setTtsId(null); setTtsPaused(false);
     // 如果已有缓存文字，直接朗读
     if (ttsText[q.id]) {
       setTtsId(q.id);
-      speakText(ttsText[q.id], ()=>setTtsId(q.id), ()=>setTtsId(null));
+      speakText(ttsText[q.id], ()=>{setTtsId(q.id);setTtsPaused(false);}, ()=>{setTtsId(null);setTtsPaused(false);});
       return;
     }
     // 否则先生成讲解文字
@@ -1641,7 +2930,7 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
       setTtsText(prev=>({...prev,[q.id]:script}));
       setTtsLoading(null);
       setTtsId(q.id);
-      speakText(script, ()=>setTtsId(q.id), ()=>setTtsId(null));
+      speakText(script, ()=>{setTtsId(q.id);setTtsPaused(false);}, ()=>{setTtsId(null);setTtsPaused(false);});
     } catch(e) {
       setTtsLoading(null);
       alert("生成语音讲解失败，请重试");
@@ -2118,11 +3407,12 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                 background:ttsId===q.id?C.red:C.alg,
                                 color:"white",border:"none",
                                 opacity:ttsLoading===q.id?0.7:1}}>
-                              {ttsLoading===q.id?"⏳ 生成中…":ttsId===q.id?"⏹ 停止朗读":"🔊 语音讲解"}
+                              {ttsLoading===q.id?"⏳ 生成中…":ttsId===q.id?(ttsPaused?"▶️ 继续":"⏸ 暂停"):"🔊 语音讲解"}
                             </button>
                             {ttsText[q.id]&&ttsId!==q.id&&(
                               <span style={{fontSize:13,color:C.muted}}>✓ 已缓存</span>
                             )}
+                            <VideoExplainButton questionId={q.id}/>
                             <AskTutor q={q} topicName={TOPIC_MAP[selTopic]?.name||"本题"} mode={isW?"wrong":"explain"}/>
                           </div>
                           {ttsText[q.id]&&(
@@ -2382,8 +3672,9 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                 background:ttsId===qId?C.red:C.alg,
                                 color:"white",border:"none",
                                 opacity:ttsLoading===qId?0.7:1}}>
-                              {ttsLoading===qId?"⏳ 生成中…":ttsId===qId?"⏹ 停止":"🔊 语音讲解"}
+                              {ttsLoading===qId?"⏳ 生成中…":ttsId===qId?(ttsPaused?"▶️ 继续":"⏸ 暂停"):"🔊 语音讲解"}
                             </button>
+                            <VideoExplainButton questionId={qId}/>
                             <AskTutor q={{id:qId,content:q.content,answer:q.answer,sol:q.sol,error:q.error}}
                               topicName={topicName} mode={isW?"wrong":"explain"}/>
                           </div>
@@ -2616,8 +3907,9 @@ function PageModules({mastered,wrongSet,onNav,addWrong,removeWrong,basicWrongSet
                                 background:ttsId===qId?C.red:C.alg,
                                 color:"white",border:"none",
                                 opacity:ttsLoading===qId?0.7:1}}>
-                              {ttsLoading===qId?"⏳ 生成中…":ttsId===qId?"⏹ 停止":"🔊 语音讲解"}
+                              {ttsLoading===qId?"⏳ 生成中…":ttsId===qId?(ttsPaused?"▶️ 继续":"⏸ 暂停"):"🔊 语音讲解"}
                             </button>
+                            <VideoExplainButton questionId={qId}/>
                             <AskTutor q={{id:qId,content:q.content,answer:q.answer,sol:q.sol,error:q.error}}
                               topicName={topicName} mode={isW?"wrong":"explain"}/>
                           </div>
@@ -2759,7 +4051,7 @@ function PageDetail({topicId,mastered,onToggle,onNav,prevView="modules",wrongSet
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",
       height:"60%",flexDirection:"column",gap:12,color:C.muted}}>
       <span style={{fontSize:40}}>∑</span>
-      <span>请从知识图谱或列表中选择知识点</span>
+      <span>请从知识树或列表中选择知识点</span>
     </div>
   );
 
@@ -2773,7 +4065,7 @@ function PageDetail({topicId,mastered,onToggle,onNav,prevView="modules",wrongSet
     const newChat=[...chat,{r:"user",t:msg}];setChat(newChat);
     try{
       const text=await callClaude(
-        `你是"数脉"初中数学AI老师，专注「${t.name}」知识点。
+        `你是"树脉"初中数学AI老师，专注「${t.name}」知识点。
 青岛卷10年该考点出现${t.examYears.length}次，总分${t.totalScore}分，考察频率${t.freq}%。
 核心考点：${t.keys.join("；")}
 中考攻略：${t.tips}
@@ -2901,57 +4193,41 @@ function PageDetail({topicId,mastered,onToggle,onNav,prevView="modules",wrongSet
       </div>
 
       {/* Exam questions */}
-      <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:20,marginBottom:14}}>
-        <h3 style={{margin:"0 0 14px",fontSize:17,color:C.geo}}>📝 历年真题（{qs.length}道）</h3>
-        {qs.length===0&&<p style={{color:C.muted,fontSize:17}}>该知识点暂无收录真题</p>}
-        {qs.map(q=>{
-          const isW=wrongSet.has(q.id),solOpen=openSol===q.id;
-          return(
-            <div key={q.id} style={{borderBottom:`1px solid ${C.border}`,paddingBottom:14,marginBottom:14}}>
-              <div style={{display:"flex",gap:6,marginBottom:9,alignItems:"center",flexWrap:"wrap"}}>
-                <Tag c={c}>{q.yr}年</Tag><Tag c={C.muted}>第{q.no}题</Tag>
-                <Tag c={C.muted}>{q.type==="choice"?"选择":q.type==="fill"?"填空":"解答"}</Tag>
-                <Tag c={C.muted}>{q.score}分</Tag>
-                <div style={{display:"flex",gap:2}}>
-                  {[1,2,3,4,5].map(i=><span key={i} style={{fontSize:14,color:i<=q.diff?C.gold:C.dim}}>★</span>)}
-                </div>
-                {q.methods&&q.methods.map(mid=>{
-                  const m=METHODS.find(x=>x.id===mid);
-                  return m?<Tag key={mid} c={C.purple} sm>{m.name}</Tag>:null;
-                })}
-                {isW&&<Tag c={C.red} sm>错题本</Tag>}
-                <button onClick={()=>isW?removeWrong(q.id):addWrong(q.id)}
-                  style={{marginLeft:"auto",fontSize:15,padding:"2px 9px",borderRadius:5,cursor:"pointer",
-                    background:isW?C.red+"1a":"none",color:isW?C.red:C.muted,
-                    border:`1px solid ${isW?C.red+"44":C.border}`}}>
-                  {isW?"✓ 已加错题本":"+ 错题本"}
-                </button>
+      <section style={{marginBottom:14}}>
+        <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:18,marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:12,color:C.geo,fontWeight:900,letterSpacing:2,marginBottom:7}}>QUESTION COACH GROUND</div>
+              <h3 style={{margin:"0 0 8px",fontSize:20,color:C.text,fontWeight:950}}>题目教练场（{qs.length}道）</h3>
+              <div style={{fontSize:13,color:C.muted,lineHeight:1.75}}>
+                每道题固定为题目区、作答区、归因区和 AI 教练区。默认先提示，再追问，再讲解。
               </div>
-              <div style={{background:C.s2,padding:"12px 14px",borderRadius:8,
-                borderLeft:`3px solid ${c}`,marginBottom:10}}>
-                <p style={{margin:0,fontSize:18,color:C.text,lineHeight:1.8}}>{q.content}</p>
-                {q.svg&&<div style={{marginTop:8,overflowX:"auto"}} dangerouslySetInnerHTML={{__html:q.svg}}/>}
-              </div>
-              <button onClick={()=>setOpenSol(solOpen?null:q.id)}
-                style={{fontSize:16,padding:"4px 12px",borderRadius:6,cursor:"pointer",
-                  background:"none",color:C.geo,border:`1px solid ${C.geo}40`}}>
-                {solOpen?"▲ 收起":"▼ 查看解析"}
-              </button>
-              {solOpen&&(
-                <div style={{marginTop:10,background:C.geo+"0a",border:`1px solid ${C.geo}22`,
-                  borderRadius:8,padding:14}}>
-                  <div style={{fontSize:17,fontWeight:700,color:C.gold,marginBottom:8}}>答案：{q.answer}</div>
-                  <pre style={{margin:"0 0 10px",fontSize:17,color:C.text,lineHeight:1.9,
-                    whiteSpace:"pre-wrap",fontFamily:"inherit"}}>{q.sol}</pre>
-                  <div style={{padding:"7px 12px",background:C.red+"0d",borderRadius:6,fontSize:16,color:C.red,marginBottom:8}}>
-                    ⚠️ 易错点：{q.error}
-                  </div>
-                </div>
-              )}
             </div>
-          );
-        })}
-      </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              <Tag c={C.geo}>提示模式优先</Tag>
+              <Tag c={C.purple}>错因归因</Tag>
+              <Tag c={C.gold}>做完再看解析</Tag>
+            </div>
+          </div>
+        </div>
+        {qs.length===0&&(
+          <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:18,color:C.muted,fontSize:16}}>
+            该知识点暂无收录真题，后续会优先补充基础题和同类变式。
+          </div>
+        )}
+        {qs.map(q=>(
+          <QuestionCoachCard
+            key={q.id}
+            q={q}
+            topicName={t.name}
+            topicColor={c}
+            isWrong={wrongSet.has(q.id)}
+            onToggleWrong={()=>wrongSet.has(q.id)?removeWrong(q.id):addWrong(q.id)}
+            solOpen={openSol===q.id}
+            onToggleSol={()=>setOpenSol(openSol===q.id?null:q.id)}
+          />
+        ))}
+      </section>
 
       {/* 视频讲解区（V1.5 接口就绪后传入 videos 数组即可显示） */}
       <VideoSection topicCode={t.id} videos={[]} title="📺 视频讲解"/>
@@ -3001,6 +4277,7 @@ function PageMethods({onNav}) {
   const {isMobile}=useBP();
   const [selCat,setSelCat]=useState("全部");
   const [selM,setSelM]=useState(null);
+  const [openMethodSol,setOpenMethodSol]=useState(null);
   const cats=["全部",...new Set(METHODS.map(m=>m.cat))];
   const visible=selCat==="全部"?METHODS:METHODS.filter(m=>m.cat===selCat);
 
@@ -3067,6 +4344,55 @@ function PageMethods({onNav}) {
                       );
                     })}
                   </div>
+                  <div onClick={e=>e.stopPropagation()} style={{marginTop:10}}>
+                    <AskTutor
+                      q={{
+                        id:m.id,
+                        content:`解题方法：${m.name}。方法说明：${m.desc}。典型例子：${m.example}。适用知识点：${m.topics.map(tid=>TOPIC_MAP[tid]?.name).filter(Boolean).join("、")}`,
+                        answer:`掌握${m.name}的题眼、适用条件和常见转化步骤`,
+                        sol:`先识别题目中适合使用${m.name}的信号，再把复杂条件转化成这个方法能处理的结构，最后回到原题检验结果。`,
+                        error:`只记方法名字，不看使用条件；或者看到相似形式就硬套${m.name}`,
+                        methods:[m.id],
+                        topic:m.topics[0]||"",
+                        type:"method",
+                      }}
+                      topicName={`${m.name}方法`}
+                      mode="explain"
+                    />
+                  </div>
+                  <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:15,color:C.muted,marginBottom:8}}>相关历年真题</div>
+                    {EXAM_QS.filter(q=>q.methods?.includes(m.id)||m.topics.includes(q.topic)).slice(0,3).map(q=>{
+                      const topic=TOPIC_MAP[q.topic];
+                      const qColor=topic?DOM[topic.domain].color:C.alg;
+                      const solOpen=openMethodSol===`${m.id}-${q.id}`;
+                      return(
+                        <div key={q.id} onClick={e=>e.stopPropagation()}
+                          style={{padding:10,borderRadius:8,background:C.s2,border:`1px solid ${qColor}22`,marginBottom:8}}>
+                          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:6}}>
+                            <Tag c={qColor} sm>{q.yr}年 第{q.no}题</Tag>
+                            <Tag c={C.muted} sm>{topic?.name||q.topic}</Tag>
+                            <Tag c={C.purple} sm>{m.name}</Tag>
+                          </div>
+                          <div style={{fontSize:15,color:C.text,lineHeight:1.7,marginBottom:8}}>{q.content}</div>
+                          <button onClick={()=>setOpenMethodSol(solOpen?null:`${m.id}-${q.id}`)}
+                            style={{fontSize:13,padding:"4px 10px",borderRadius:6,cursor:"pointer",
+                              background:"none",color:C.geo,border:`1px solid ${C.geo}40`}}>
+                            {solOpen?"▲ 收起解析":"▼ 查看解析"}
+                          </button>
+                          {solOpen&&(
+                            <div style={{marginTop:8,padding:10,borderRadius:8,
+                              background:C.geo+"0a",border:`1px solid ${C.geo}22`}}>
+                              <div style={{fontSize:14,fontWeight:800,color:C.gold,marginBottom:6}}>答案：{q.answer}</div>
+                              <div style={{fontSize:14,color:C.text,lineHeight:1.8,whiteSpace:"pre-wrap",marginBottom:8}}>{q.sol}</div>
+                              <div style={{fontSize:13,color:C.red,marginBottom:8}}>易错点：{q.error||"无"}</div>
+                              <AskTutor q={q} topicName={topic?.name||"本题"} mode="explain"/>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -3106,6 +4432,7 @@ function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters,highligh
   const setModeF=v=>setF("mode",v);
   const [openSol,setOpenSol]=useState(null);
   const [ttsId,setTtsId]=useState(null);
+  const [ttsPaused,setTtsPaused]=useState(false);
   const [ttsLoading,setTtsLoading]=useState(null);
   const [ttsText,setTtsText]=useState({});
   const allYears=[2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025];
@@ -3113,14 +4440,18 @@ function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters,highligh
 
   const handleSpeak = async (q) => {
     const topicName = TOPIC_MAP[q.topic]?.name || "本题";
-    if (ttsId===q.id){stopSpeak();setTtsId(null);return;}
-    stopSpeak();setTtsId(null);
-    if(ttsText[q.id]){setTtsId(q.id);speakText(ttsText[q.id],()=>setTtsId(q.id),()=>setTtsId(null));return;}
+    if (ttsId===q.id){
+      if(ttsPaused){resumeSpeak();setTtsPaused(false);}
+      else{pauseSpeak();setTtsPaused(true);}
+      return;
+    }
+    stopSpeak();setTtsId(null);setTtsPaused(false);
+    if(ttsText[q.id]){setTtsId(q.id);speakText(ttsText[q.id],()=>{setTtsId(q.id);setTtsPaused(false);},()=>{setTtsId(null);setTtsPaused(false);});return;}
     setTtsLoading(q.id);
     try{
       const s=await genVoiceScript(q,topicName);
       setTtsText(p=>({...p,[q.id]:s}));setTtsLoading(null);setTtsId(q.id);
-      speakText(s,()=>setTtsId(q.id),()=>setTtsId(null));
+      speakText(s,()=>{setTtsId(q.id);setTtsPaused(false);},()=>{setTtsId(null);setTtsPaused(false);});
     }catch{setTtsLoading(null);}
   };
 
@@ -3241,10 +4572,11 @@ function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters,highligh
                         background:ttsId===q.id?C.red:C.alg,
                         color:"white",border:"none",
                         opacity:ttsLoading===q.id?0.7:1}}>
-                      {ttsLoading===q.id?"⏳ 生成中…":ttsId===q.id?"⏹ 停止":"🔊 语音讲解"}
+                      {ttsLoading===q.id?"⏳ 生成中…":ttsId===q.id?(ttsPaused?"▶️ 继续":"⏸ 暂停"):"🔊 语音讲解"}
                     </button>
-                    <AskTutor q={q} topicName={TOPIC_MAP[q.topic]?.name||"本题"} mode="explain"/>
+                    <VideoExplainButton questionId={q.id}/>
                   </div>
+                  <CoachWorkbench q={q} topicName={TOPIC_MAP[q.topic]?.name||"本题"}/>
                   {ttsText[q.id]&&(
                     <div style={{marginBottom:10,padding:"8px 12px",
                       background:C.alg+"0d",borderRadius:6,
@@ -3336,26 +4668,57 @@ function lookupBasicQ(id){
 /* ════════════════════════════════════════════════════════════
    PAGE: WRONG BOOK
 ════════════════════════════════════════════════════════════ */
-function PageWrong({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),removeBasicWrong=()=>{}}) {
+function PageWrongLegacy({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),removeBasicWrong=()=>{}}) {
   const {isMobile}=useBP();
   const [filter,setFilter]=useState(()=>q=>wrongSet.has(q.id));
   const [openSol,setOpenSol]=useState(null);
   const [ttsId,setTtsId]=useState(null);
+  const [ttsPaused,setTtsPaused]=useState(false);
   const [ttsLoading,setTtsLoading]=useState(null);
   const [ttsText,setTtsText]=useState({});
   const wrongQs=EXAM_QS.filter(filter);
   const basicWrongQsList=[...basicWrongSet].map(lookupBasicQ).filter(Boolean);
+  const allWrongItems=[...wrongQs,...basicWrongQsList];
+  const errorPatterns=[
+    {label:"审题漏条件",match:["条件","读题","漏","已知"],color:C.red},
+    {label:"方法选择错误",match:["方法","思路","转化","辅助"],color:C.purple},
+    {label:"概念不清",match:["概念","定义","性质","理解"],color:C.alg},
+    {label:"公式记错",match:["公式","符号","平方","根式"],color:C.sta},
+    {label:"计算失误",match:["计算","化简","运算","符号"],color:C.geo},
+  ].map(p=>{
+    const count=allWrongItems.filter(q=>{
+      const text=`${q.error||""} ${q.sol||""} ${q.content||""}`;
+      return p.match.some(k=>text.includes(k));
+    }).length;
+    return {...p,count};
+  }).sort((a,b)=>b.count-a.count);
+  const topicPattern=Object.entries(
+    allWrongItems.reduce((acc,q)=>{
+      if(q.topic) acc[q.topic]=(acc[q.topic]||0)+1;
+      return acc;
+    },{})
+  ).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const clearSteps=[
+    {label:"第一次做错",done:allWrongItems.length>0,color:C.red},
+    {label:"看提示做对",done:false,color:C.sta},
+    {label:"隔天独立做对",done:false,color:C.alg},
+    {label:"一周后独立做对",done:false,color:C.ok},
+  ];
 
   const handleSpeak = async (q) => {
     const topicName = TOPIC_MAP[q.topic]?.name || "本题";
-    if(ttsId===q.id){stopSpeak();setTtsId(null);return;}
-    stopSpeak();setTtsId(null);
-    if(ttsText[q.id]){setTtsId(q.id);speakText(ttsText[q.id],()=>setTtsId(q.id),()=>setTtsId(null));return;}
+    if(ttsId===q.id){
+      if(ttsPaused){resumeSpeak();setTtsPaused(false);}
+      else{pauseSpeak();setTtsPaused(true);}
+      return;
+    }
+    stopSpeak();setTtsId(null);setTtsPaused(false);
+    if(ttsText[q.id]){setTtsId(q.id);speakText(ttsText[q.id],()=>{setTtsId(q.id);setTtsPaused(false);},()=>{setTtsId(null);setTtsPaused(false);});return;}
     setTtsLoading(q.id);
     try{
       const s=await genVoiceScript(q,topicName);
       setTtsText(p=>({...p,[q.id]:s}));setTtsLoading(null);setTtsId(q.id);
-      speakText(s,()=>setTtsId(q.id),()=>setTtsId(null));
+      speakText(s,()=>{setTtsId(q.id);setTtsPaused(false);},()=>{setTtsId(null);setTtsPaused(false);});
     }catch{setTtsLoading(null);}
   };
 
@@ -3379,10 +4742,48 @@ function PageWrong({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),
     <div style={{padding:24}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <div>
-          <h2 style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:C.text}}>📋 错题本</h2>
+          <h2 style={{margin:"0 0 4px",fontSize:22,fontWeight:800,color:C.text}}>📋 错因修复系统</h2>
           <p style={{margin:0,fontSize:17,color:C.muted}}>
-            {wrongQs.length}道错题 · 按知识点分组 · 系统自动追溯根源
+            {allWrongItems.length}道错题 · 按知识点分组 · 先找模式，再清除
           </p>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:12,marginBottom:20}}>
+        <div style={{background:C.s1,border:`1px solid ${C.red}22`,borderRadius:12,padding:16}}>
+          <h3 style={{margin:"0 0 10px",fontSize:16,color:C.red}}>高频错因</h3>
+          {errorPatterns.slice(0,3).map(p=>(
+            <div key={p.label} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{width:8,height:8,borderRadius:4,background:p.color}}/>
+              <span style={{fontSize:14,color:C.text,flex:1}}>{p.label}</span>
+              <span style={{fontSize:13,color:p.color,fontWeight:800}}>{p.count}次</span>
+            </div>
+          ))}
+        </div>
+        <div style={{background:C.s1,border:`1px solid ${C.alg}22`,borderRadius:12,padding:16}}>
+          <h3 style={{margin:"0 0 10px",fontSize:16,color:C.alg}}>高频知识点</h3>
+          {topicPattern.length?topicPattern.map(([tid,count])=>{
+            const t=TOPIC_MAP[tid],c=t?DOM[t.domain].color:C.muted;
+            return(
+              <button key={tid} onClick={()=>onNav("detail",tid)}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:8,marginBottom:8,
+                  padding:0,border:"none",background:"none",cursor:"pointer",textAlign:"left"}}>
+                <span style={{fontSize:14,color:c,flex:1}}>{t?.name||tid}</span>
+                <span style={{fontSize:13,color:c,fontWeight:800}}>{count}题</span>
+              </button>
+            );
+          }):<div style={{fontSize:14,color:C.muted}}>暂无集中知识点</div>}
+        </div>
+        <div style={{background:C.s1,border:`1px solid ${C.ok}22`,borderRadius:12,padding:16}}>
+          <h3 style={{margin:"0 0 10px",fontSize:16,color:C.ok}}>清除标准</h3>
+          {clearSteps.map((s,i)=>(
+            <div key={s.label} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+              <span style={{width:20,height:20,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",
+                background:s.done?s.color+"22":C.s2,color:s.done?s.color:C.muted,fontSize:11,fontWeight:900,
+                border:`1px solid ${s.done?s.color+"44":C.border}`}}>{i+1}</span>
+              <span style={{fontSize:13,color:s.done?C.text:C.muted}}>{s.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -3448,12 +4849,18 @@ function PageWrong({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),
           <h3 style={{margin:"0 0 12px",fontSize:18,fontWeight:700,color:C.m3}}>📚 基础·题组·压轴错题</h3>
           {basicWrongQsList.map(q=>{
             const sol=openSol===q.id;
+            const inferredError=errorPatterns.find(p=>{
+              const text=`${q.error||""} ${q.sol||""} ${q.content||""}`;
+              return p.count>0&&p.match.some(k=>text.includes(k));
+            })||errorPatterns[0];
             return(
               <div key={q.id} style={{background:C.s1,border:`1px solid ${C.border}`,
                 borderRadius:10,padding:14,marginBottom:10}}>
                 <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
                   {q._label&&<span style={{fontSize:13,padding:"2px 8px",borderRadius:12,
                     background:C.m3+"22",color:C.m3,fontWeight:700}}>{q._label}</span>}
+                  <Tag c={inferredError.color} sm>{inferredError.label}</Tag>
+                  <Tag c={C.gold} sm>待清除 1/4</Tag>
                   <button
                     onClick={()=>removeBasicWrong(q.id)}
                     style={{marginLeft:"auto",fontSize:14,padding:"2px 9px",borderRadius:5,
@@ -3504,10 +4911,16 @@ function PageWrong({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),
             </div>
             {qs.map(q=>{
               const sol=openSol===q.id;
+              const inferredError=errorPatterns.find(p=>{
+                const text=`${q.error||""} ${q.sol||""} ${q.content||""}`;
+                return p.count>0&&p.match.some(k=>text.includes(k));
+              })||errorPatterns[0];
               return(
                 <div key={q.id} style={{borderBottom:`1px solid ${C.border}`,paddingBottom:12,marginBottom:12}}>
                   <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
                     <Tag c={C.muted} sm>{q.yr}年</Tag><Tag c={C.muted} sm>{q.score}分</Tag>
+                    <Tag c={inferredError.color} sm>{inferredError.label}</Tag>
+                    <Tag c={C.gold} sm>待清除 1/4</Tag>
                     <button onClick={()=>removeWrong(q.id)}
                       style={{marginLeft:"auto",fontSize:15,padding:"2px 9px",borderRadius:5,
                         cursor:"pointer",background:"none",color:C.muted,border:`1px solid ${C.border}`}}>
@@ -3542,8 +4955,9 @@ function PageWrong({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),
                             background:ttsId===q.id?C.red:C.alg,
                             color:"white",border:"none",
                             opacity:ttsLoading===q.id?0.7:1}}>
-                          {ttsLoading===q.id?"⏳ 生成中…":ttsId===q.id?"⏹ 停止":"🔊 语音讲解"}
+                          {ttsLoading===q.id?"⏳ 生成中…":ttsId===q.id?(ttsPaused?"▶️ 继续":"⏸ 暂停"):"🔊 语音讲解"}
                         </button>
+                        <VideoExplainButton questionId={q.id}/>
                         <AskTutor q={q} topicName={TOPIC_MAP[q.topic]?.name||"本题"} mode="wrong"/>
                       </div>
                       {ttsText[q.id]&&(
@@ -3559,6 +4973,282 @@ function PageWrong({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),
               );
             })}
           </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PageWrong({wrongSet,removeWrong,mastered,onNav,basicWrongSet=new Set(),removeBasicWrong=()=>{}}) {
+  const {isMobile}=useBP();
+  const [openSol,setOpenSol]=useState(null);
+  const wrongQs=EXAM_QS.filter(q=>wrongSet.has(q.id));
+  const basicWrongQsList=[...basicWrongSet].map(lookupBasicQ).filter(Boolean);
+  const allWrongItems=[...wrongQs,...basicWrongQsList];
+  const errorPatterns=[
+    {label:"审题漏条件",match:["条件","读题","漏","已知"],color:C.red,repair:"今天只练找条件，先圈出题眼再动笔。"},
+    {label:"方法选择错误",match:["方法","思路","转化","辅助"],color:C.purple,repair:"先判断题型信号，再选择方法，不急着计算。"},
+    {label:"概念不清",match:["概念","定义","性质","理解"],color:C.alg,repair:"回到定义、常例、反例，把边界补稳。"},
+    {label:"公式记错",match:["公式","符号","平方","根式"],color:C.sta,repair:"先写公式适用条件，再代数值。"},
+    {label:"计算失误",match:["计算","化简","运算","符号"],color:C.geo,repair:"减少心算，保留关键中间步骤。"},
+  ].map(p=>({
+    ...p,
+    count:allWrongItems.filter(q=>{
+      const text=`${q.error||""} ${q.sol||""} ${q.content||""}`;
+      return p.match.some(k=>text.includes(k));
+    }).length,
+  })).sort((a,b)=>b.count-a.count);
+  const inferError=(q)=>errorPatterns.find(p=>{
+    const text=`${q.error||""} ${q.sol||""} ${q.content||""}`;
+    return p.count>0&&p.match.some(k=>text.includes(k));
+  }) || errorPatterns[0];
+  const topicPattern=Object.entries(allWrongItems.reduce((acc,q)=>{
+    if(q.topic) acc[q.topic]=(acc[q.topic]||0)+1;
+    return acc;
+  },{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const weekItems=allWrongItems.slice(0,6);
+  const clearSteps=[
+    {label:"第一次做错",desc:"系统记录错因和知识点",color:C.red},
+    {label:"看提示做对",desc:"AI 只给下一步提示",color:C.sta},
+    {label:"隔天独立做对",desc:"不看提示完成同题",color:C.alg},
+    {label:"一周后独立做对",desc:"能独立完成才清除",color:C.ok},
+  ];
+  const byTopic=wrongQs.reduce((acc,q)=>{
+    if(!acc[q.topic]) acc[q.topic]=[];
+    acc[q.topic].push(q);
+    return acc;
+  },{});
+  const wrongById=new Map(wrongQs.map(q=>[q.id,q]));
+
+  if(allWrongItems.length===0)return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+      minHeight:"60vh",gap:14,color:C.muted,padding:24,textAlign:"center"}}>
+      <div style={{fontSize:48}}>✓</div>
+      <div style={{fontSize:24,fontWeight:950,color:C.text}}>错因修复区暂时清空</div>
+      <div style={{fontSize:15,lineHeight:1.8}}>继续做题。系统发现新的不稳定树枝时，会自动进入这里修复。</div>
+      <button onClick={()=>onNav("practice")} style={{padding:"10px 18px",borderRadius:10,cursor:"pointer",
+        background:C.alg+"18",color:C.alg,border:`1px solid ${C.alg}42`,fontSize:14,fontWeight:900}}>
+        去做一组真题
+      </button>
+    </div>
+  );
+
+  return(
+    <div style={{padding:isMobile?12:24,maxWidth:1120,margin:"0 auto"}}>
+      <section style={{background:C.s1,border:`1px solid ${C.red}28`,borderRadius:16,
+        padding:isMobile?18:22,marginBottom:14}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.2fr .8fr",gap:18}}>
+          <div>
+            <div style={{fontSize:12,color:C.red,fontWeight:900,letterSpacing:3,textTransform:"uppercase",marginBottom:8}}>
+              Mistake Repair System
+            </div>
+            <h1 style={{margin:"0 0 10px",fontSize:isMobile?30:42,lineHeight:1.08,color:C.text,fontWeight:950}}>
+              错因修复系统
+            </h1>
+            <p style={{margin:0,fontSize:15,color:C.muted,lineHeight:1.85,maxWidth:760}}>
+              错题不是失败存档。树脉先看出模式，再安排清除：看提示做对、隔天独立做对、一周后独立做对，最后才算真正清除。
+            </p>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {[
+              ["待修错题",allWrongItems.length,C.red],
+              ["高频错因",errorPatterns.filter(p=>p.count>0).length,C.purple],
+              ["集中知识点",topicPattern.length,C.alg],
+              ["本周待清除",weekItems.length,C.gold],
+            ].map(([label,val,color])=>(
+              <div key={label} style={{background:C.s2,border:`1px solid ${color}28`,borderRadius:11,padding:12}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:6}}>{label}</div>
+                <div style={{fontSize:24,fontWeight:950,color}}>{val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:12,marginBottom:14}}>
+        <div style={{background:C.s1,border:`1px solid ${C.red}22`,borderRadius:14,padding:16}}>
+          <h2 style={{margin:"0 0 12px",fontSize:18,color:C.text,fontWeight:950}}>高频错因</h2>
+          {errorPatterns.slice(0,4).map(p=>(
+            <div key={p.label} style={{background:C.s2,border:`1px solid ${p.color}22`,borderRadius:10,padding:11,marginBottom:9}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:14,color:p.color,fontWeight:950}}>{p.label}</span>
+                <span style={{fontSize:13,color:p.color,fontWeight:950}}>{p.count}次</span>
+              </div>
+              <div style={{fontSize:12,color:C.muted,lineHeight:1.65,marginTop:6}}>{p.repair}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{background:C.s1,border:`1px solid ${C.alg}22`,borderRadius:14,padding:16}}>
+          <h2 style={{margin:"0 0 12px",fontSize:18,color:C.text,fontWeight:950}}>高频知识点</h2>
+          {topicPattern.length?topicPattern.map(([tid,count])=>{
+            const t=TOPIC_MAP[tid],c=t?DOM[t.domain].color:C.muted;
+            return(
+              <button key={tid} onClick={()=>onNav("detail",tid)}
+                style={{width:"100%",display:"flex",justifyContent:"space-between",gap:8,alignItems:"center",
+                  padding:"10px 11px",borderRadius:10,marginBottom:9,cursor:"pointer",textAlign:"left",
+                  background:C.s2,border:`1px solid ${c}24`}}>
+                <span style={{fontSize:14,color:c,fontWeight:950}}>{t?.name||tid}</span>
+                <span style={{fontSize:13,color:c,fontWeight:950}}>{count}题</span>
+              </button>
+            );
+          }):<div style={{fontSize:14,color:C.muted}}>暂无集中知识点</div>}
+        </div>
+        <div style={{background:C.s1,border:`1px solid ${C.ok}22`,borderRadius:14,padding:16}}>
+          <h2 style={{margin:"0 0 12px",fontSize:18,color:C.text,fontWeight:950}}>清除标准</h2>
+          {clearSteps.map((s,i)=>(
+            <div key={s.label} style={{display:"grid",gridTemplateColumns:"28px 1fr",gap:9,marginBottom:10,alignItems:"start"}}>
+              <span style={{width:24,height:24,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",
+                background:s.color+"18",color:s.color,border:`1px solid ${s.color}42`,fontSize:12,fontWeight:950}}>{i+1}</span>
+              <div>
+                <div style={{fontSize:14,color:C.text,fontWeight:900}}>{s.label}</div>
+                <div style={{fontSize:12,color:C.muted,lineHeight:1.6,marginTop:3}}>{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={{background:C.s1,border:`1px solid ${C.gold}24`,borderRadius:14,padding:16,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:12,flexWrap:"wrap"}}>
+          <div>
+            <h2 style={{margin:"0 0 6px",fontSize:20,color:C.text,fontWeight:950}}>本周待清除错题</h2>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.7}}>优先处理最靠前的 6 道。今天只修一个错因，不把挫败感铺开。</div>
+          </div>
+          <button onClick={()=>onNav("printplan")} style={{padding:"9px 13px",borderRadius:9,cursor:"pointer",
+            background:C.gold+"18",color:C.gold,border:`1px solid ${C.gold}42`,fontSize:13,fontWeight:900}}>
+            生成清除训练单
+          </button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:9}}>
+          {weekItems.map((q,i)=>{
+            const topic=TOPIC_MAP[q.topic],c=topic?DOM[topic.domain].color:C.m3;
+            const err=inferError(q);
+            return(
+              <button key={q.id} onClick={()=>q.topic?onNav("detail",q.topic):setOpenSol(openSol===q.id?null:q.id)}
+                style={{textAlign:"left",padding:12,borderRadius:10,cursor:"pointer",
+                  background:C.s2,border:`1px solid ${err.color}24`}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                  <Tag c={err.color} sm>{err.label}</Tag>
+                  <Tag c={C.gold} sm>{i+1}/6</Tag>
+                </div>
+                <div style={{fontSize:14,color:C.text,fontWeight:900,marginBottom:6}}>{topic?.name||q._label||"基础题"}</div>
+                <div style={{fontSize:12,color:C.muted,lineHeight:1.65}}>
+                  {q.yr?`${q.yr}年 第${q.no}题`:(q._label||"基础训练")} · 清除进度 1/4
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {Object.entries(byTopic).length>0&&(
+        <section style={{background:C.s1,border:`1px solid ${C.red}20`,borderRadius:14,padding:16,marginBottom:14}}>
+          <h2 style={{margin:"0 0 12px",fontSize:20,color:C.text,fontWeight:950}}>错因追溯</h2>
+          {Object.entries(byTopic).map(([tid,qs])=>{
+            const {roots,unmastered}=traceRootCause(tid,mastered);
+            const c=DOM[TOPIC_MAP[tid]?.domain]?.color||C.muted;
+            return(
+              <div key={tid} style={{background:C.s2,border:`1px solid ${c}22`,borderRadius:11,padding:12,marginBottom:10}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+                  <Tag c={c}>{TOPIC_MAP[tid]?.name}</Tag>
+                  <span style={{fontSize:13,color:C.muted}}>错 {qs.length} 题</span>
+                  <span style={{fontSize:13,color:C.muted}}>→ 根源薄弱点</span>
+                  {roots.map(rid=>{
+                    const rt=TOPIC_MAP[rid]; if(!rt) return null;
+                    return <button key={rid} onClick={()=>onNav("detail",rid)}
+                      style={{padding:"4px 9px",borderRadius:20,fontSize:13,cursor:"pointer",
+                        background:C.red+"18",border:`1px solid ${C.red}44`,color:C.red,fontWeight:800}}>
+                      {rt.name}
+                    </button>;
+                  })}
+                </div>
+                {unmastered.length>1&&(
+                  <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+                    <span style={{fontSize:12,color:C.muted}}>补差路径：</span>
+                    {[...new Set([...roots,...unmastered])].slice(0,5).map((rid,i,arr)=>{
+                      const rt=TOPIC_MAP[rid]; if(!rt) return null;
+                      const c2=DOM[rt.domain].color;
+                      return <span key={rid} style={{display:"flex",alignItems:"center",gap:3}}>
+                        <button onClick={()=>onNav("detail",rid)}
+                          style={{padding:"2px 8px",borderRadius:20,fontSize:12,cursor:"pointer",
+                            background:c2+"14",border:`1px solid ${c2}33`,color:c2}}>
+                          {rt.name}
+                        </button>
+                        {i<arr.length-1&&<span style={{color:C.dim,fontSize:12}}>→</span>}
+                      </span>;
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {basicWrongQsList.length>0&&(
+        <section style={{marginBottom:14}}>
+          <h2 style={{margin:"0 0 12px",fontSize:20,color:C.text,fontWeight:950}}>基础 / 题组 / 压轴错题</h2>
+          {basicWrongQsList.map(q=>{
+            const sol=openSol===q.id,err=inferError(q);
+            return(
+              <div key={q.id} style={{background:C.s1,border:`1px solid ${err.color}24`,borderRadius:12,padding:14,marginBottom:10}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:9,flexWrap:"wrap"}}>
+                  {q._label&&<Tag c={C.m3}>{q._label}</Tag>}
+                  <Tag c={err.color}>{err.label}</Tag>
+                  <Tag c={C.gold}>清除 1/4</Tag>
+                  <button onClick={()=>removeBasicWrong(q.id)}
+                    style={{marginLeft:"auto",fontSize:13,padding:"5px 10px",borderRadius:8,cursor:"pointer",
+                      background:"transparent",color:C.muted,border:`1px solid ${C.border}`}}>
+                    移出
+                  </button>
+                </div>
+                <div style={{background:C.s2,padding:"11px 12px",borderRadius:9,borderLeft:`3px solid ${err.color}`,marginBottom:9}}>
+                  <p style={{margin:0,fontSize:16,color:C.text,lineHeight:1.75}}>{q.content}</p>
+                </div>
+                <button onClick={()=>setOpenSol(sol?null:q.id)}
+                  style={{fontSize:14,padding:"6px 10px",borderRadius:8,cursor:"pointer",
+                    background:sol?C.geo+"18":"transparent",color:C.geo,border:`1px solid ${C.geo}40`}}>
+                  {sol?"收起修复入口":"看提示后再解析"}
+                </button>
+                {sol&&(
+                  <div style={{marginTop:9,background:C.geo+"0a",border:`1px solid ${C.geo}22`,borderRadius:9,padding:12}}>
+                    <div style={{fontSize:15,fontWeight:900,color:C.gold,marginBottom:6}}>答案：{q.answer}</div>
+                    {q.sol&&<pre style={{margin:"0 0 8px",fontSize:15,color:C.text,lineHeight:1.8,whiteSpace:"pre-wrap",fontFamily:"inherit"}}>{q.sol}</pre>}
+                    {q.error&&<div style={{padding:"7px 10px",background:C.red+"0d",borderRadius:7,fontSize:14,color:C.red}}>易错点：{q.error}</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {Object.entries(byTopic).map(([tid,qs])=>{
+        const t=TOPIC_MAP[tid],c=t?DOM[t.domain].color:C.muted;
+        return(
+          <section key={tid} style={{marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+              <h2 style={{margin:0,fontSize:20,fontWeight:950,color:c}}>{t?.name}</h2>
+              <Tag c={c}>{qs.length}道</Tag>
+              <button onClick={()=>onNav("detail",tid)}
+                style={{marginLeft:"auto",fontSize:13,padding:"7px 10px",borderRadius:8,cursor:"pointer",
+                  background:c+"12",color:c,border:`1px solid ${c}38`,fontWeight:900}}>
+                学习该知识点
+              </button>
+            </div>
+            {qs.map(q=>(
+              <QuestionCoachCard
+                key={q.id}
+                q={q}
+                topicName={t?.name||"本题"}
+                topicColor={c}
+                isWrong={wrongById.has(q.id)}
+                onToggleWrong={()=>removeWrong(q.id)}
+                solOpen={openSol===q.id}
+                onToggleSol={()=>setOpenSol(openSol===q.id?null:q.id)}
+              />
+            ))}
+          </section>
         );
       })}
     </div>
@@ -3590,7 +5280,7 @@ function PageDiag({mastered,wrongSet,onNav}) {
     setLoading(true);setResult("");
     try{
       const text=await callClaude(
-        `你是"数脉"初中数学学情诊断AI，结合数脉学习法（四模块+23种方法）分析学生数据。
+        `你是"树脉"初中数学学情诊断AI，结合树脉学习法（四模块+23种方法）分析学生数据。
 格式：
 ## 薄弱点诊断
 （3-4个高频未掌握考点，说明原因）
@@ -3599,7 +5289,7 @@ function PageDiag({mastered,wrongSet,onNav}) {
 ## 知识漏洞追因
 （用"知识依赖树"说明根源薄弱点）
 ## 个性化学习路径
-（按数脉四模块顺序：基础知识→基础习题→题组训练→压轴）
+（按树脉四模块顺序：基础知识→基础习题→题组训练→压轴）
 ## 推荐优先掌握的解题方法
 （从23种方法中推荐3-5种）
 每段50字以内，面向初中生。`,
@@ -3693,7 +5383,7 @@ function PageDiag({mastered,wrongSet,onNav}) {
           <div>
             <h3 style={{margin:"0 0 4px",fontSize:19,color:C.alg}}>🤖 AI学情诊断报告</h3>
             <p style={{margin:0,fontSize:16,color:C.muted}}>
-              结合数脉学习法四模块+知识依赖树+10年青岛卷数据，生成专属报告
+              结合树脉学习法四模块+知识依赖树+10年青岛卷数据，生成专属报告
             </p>
           </div>
           <button onClick={run} disabled={loading}
@@ -3857,25 +5547,205 @@ function PagePredict() {
 ════════════════════════════════════════════════════════════ */
 const NAV=[
   {id:"home",label:"首页",icon:"⊡"},
-  {id:"morning",label:"晨读卡",icon:"☀️"},
-  {id:"graph",label:"知识图谱",icon:"◎"},
-  {id:"modules",label:"四模块",icon:"▦"},
+  {id:"math",label:"数学",icon:"∑"},
+  {id:"graph",label:"知识树",icon:"◎"},
+  {id:"practice",label:"练题",icon:"✎"},
+  {id:"wrong",label:"错因",icon:"📋"},
+  {id:"me",label:"我的",icon:"👤"},
+  {id:"printplan",label:"训练单",icon:"📄"},
   {id:"methods",label:"23种方法",icon:"⚙"},
-  {id:"practice",label:"真题刷题",icon:"✎"},
   {id:"diag",label:"智能诊断",icon:"◈"},
-  {id:"predict",label:"中考预测",icon:"◇"},
+  {id:"plan",label:"反向规划",icon:"◇"},
   {id:"paper",label:"试卷分析",icon:"📄"},
   {id:"ocr",label:"作业识别",icon:"📸"},
   {id:"sprint",label:"考前冲刺",icon:"🔥"},
-  {id:"wrong",label:"错题本",icon:"📋"},
-  {id:"agent",label:"学伴Agent",icon:"🤖"},
+  {id:"agent",label:"AI 学伴",icon:"🤖"},
   // teacher/parent/vip/admin 通过独立URL访问，不在学生端导航显示
 ];
+const PORTAL_NAV=[
+  {id:"home",label:"首页",icon:"⊡"},
+  {id:"math",label:"数学",icon:"∑"},
+  {id:"english",label:"英语",icon:"A"},
+  {id:"wechat",label:"微信 AI",icon:"⌁"},
+  {id:"plan",label:"反向规划",icon:"◎"},
+  {id:"me",label:"我的",icon:"👤"},
+];
+const PORTAL_SHELL_VIEWS = new Set(["home","english","wechat","me","plan"]);
 
 /* ════════════════════════════════════════════════════════════
    PAGE ME — 手机端"我的"个人中心
 ════════════════════════════════════════════════════════════ */
-function PageMe({mastered, wrongSet, basicWrongSet, aiModel, setAiModel, dsKey, setDsKey, dbKey, setDbKey, onNav, onClear}){
+function formatWechatLastSeen(lastSeen){
+  if(!lastSeen) return "还没有微信互动记录";
+  const d=new Date(lastSeen);
+  if(Number.isNaN(d.getTime())) return "最近互动时间暂不可读";
+  const diff=Date.now()-d.getTime();
+  const min=Math.floor(diff/60000);
+  if(min<1) return "刚刚互动过";
+  if(min<60) return `${min}分钟前互动`;
+  const hour=Math.floor(min/60);
+  if(hour<24) return `${hour}小时前互动`;
+  const day=Math.floor(hour/24);
+  if(day<7) return `${day}天前互动`;
+  return d.toLocaleDateString("zh-CN",{month:"long",day:"numeric"});
+}
+
+function WechatCoachPanel({authUser, authToken, onOpenAuth, compact=false}){
+  const {isMobile}=useBP();
+  const [wechatStatus,setWechatStatus]=useState(null);
+  const [wechatLoading,setWechatLoading]=useState(false);
+  const [wechatError,setWechatError]=useState("");
+  const token = authToken || window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+  const phone = authUser?.phone || "";
+  const bindCommand = phone ? `绑定 ${phone}` : "绑定 你的手机号";
+  const botWechatId = wechatStatus?.botWechatId || "树脉学长";
+  const botQrCodeUrl = wechatStatus?.botQrCodeUrl || "";
+
+  useEffect(()=>{
+    if(!token){
+      setWechatStatus(null);
+      setWechatError("");
+      setWechatLoading(false);
+      return;
+    }
+    let alive=true;
+    setWechatLoading(true);
+    setWechatError("");
+    fetch(`${BACKEND_URL}/api/wechat/status`,{headers:{Authorization:`Bearer ${token}`}})
+      .then(async r=>{
+        const data=await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(data.error||"微信状态暂时不可用");
+        if(alive) setWechatStatus(data);
+      })
+      .catch(err=>alive&&setWechatError(err.message||"微信状态暂时不可用"))
+      .finally(()=>alive&&setWechatLoading(false));
+    return()=>{alive=false;};
+  },[token]);
+
+  const unbindWechat=async()=>{
+    if(!token||!wechatStatus?.bound) return;
+    setWechatLoading(true);
+    setWechatError("");
+    try{
+      const r=await fetch(`${BACKEND_URL}/api/wechat/unbind`,{
+        method:"POST",
+        headers:{Authorization:`Bearer ${token}`},
+      });
+      const data=await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(data.error||"解绑失败");
+      setWechatStatus(s=>({...s,bound:false,lastSeen:null}));
+    }catch(err){
+      setWechatError(err.message||"解绑失败");
+    }finally{
+      setWechatLoading(false);
+    }
+  };
+
+  return(
+      <div style={{background:`linear-gradient(135deg,${C.geo}12,${C.alg}08)`,border:`1px solid ${C.geo}33`,
+        borderRadius:14,padding:compact?14:16,marginBottom:compact?0:16,minWidth:0,overflow:"hidden"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:12,color:C.geo,fontWeight:800,letterSpacing:1,marginBottom:5}}>微信里的 AI 教练</div>
+            <div style={{fontSize:18,fontWeight:900,color:C.text,overflowWrap:"anywhere"}}>添加 {botWechatId}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:4,overflowWrap:"anywhere"}}>
+              {wechatLoading?"正在读取绑定状态":wechatStatus?.bound?"已绑定，微信里可以直接发题和收计划":"扫码或搜索微信号，发送绑定指令"}
+            </div>
+          </div>
+          <div style={{padding:"4px 9px",borderRadius:999,fontSize:12,fontWeight:800,whiteSpace:"nowrap",
+            background:wechatStatus?.bound?C.ok+"18":C.gold+"18",
+            color:wechatStatus?.bound?C.ok:C.gold,
+            border:`1px solid ${wechatStatus?.bound?C.ok+"44":C.gold+"44"}`}}>
+            {wechatStatus?.bound?"已绑定":"待绑定"}
+          </div>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:botQrCodeUrl?(isMobile?"1fr":"92px 1fr"):"1fr",gap:12,alignItems:"stretch",minWidth:0}}>
+          {botQrCodeUrl&&(
+            <div style={{width:92,height:92,borderRadius:10,background:"#fff",padding:6,boxSizing:"border-box"}}>
+              <img src={botQrCodeUrl} alt="树脉学长微信二维码" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}}/>
+            </div>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:0}}>
+            {[
+              {n:"1",t:"扫码添加树脉学长微信"},
+              {n:"2",t:`发送：${bindCommand}`},
+              {n:"3",t:"微信内对话、收计划、发题分析"},
+            ].map(step=>(
+              <div key={step.n} style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{width:20,height:20,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",
+                  background:C.geo+"22",color:C.geo,border:`1px solid ${C.geo}44`,fontSize:12,fontWeight:900,flexShrink:0}}>{step.n}</span>
+                <span style={{fontSize:13,color:C.text,lineHeight:1.5,overflowWrap:"anywhere"}}>{step.t}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{marginTop:12,padding:"10px 12px",borderRadius:10,background:C.bg,border:`1px solid ${C.border}`,minWidth:0,overflow:"hidden"}}>
+          <div style={{fontSize:12,color:C.muted,marginBottom:5}}>绑定指令</div>
+          <div style={{display:"flex",alignItems:isMobile?"stretch":"center",gap:8,flexDirection:isMobile?"column":"row",minWidth:0}}>
+            <code style={{flex:1,minWidth:0,padding:"7px 10px",borderRadius:8,background:C.s2,color:C.geo,
+              border:`1px solid ${C.geo}33`,fontSize:14,whiteSpace:"normal",overflowWrap:"anywhere"}}>
+              {bindCommand}
+            </code>
+            {!token&&(
+              <button onClick={onOpenAuth}
+                style={{padding:"7px 12px",borderRadius:8,border:"none",background:C.alg,color:"white",
+                  fontSize:13,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap",alignSelf:isMobile?"flex-start":"auto"}}>登录</button>
+            )}
+            {wechatStatus?.bound&&(
+              <button onClick={unbindWechat} disabled={wechatLoading}
+                style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${C.border}`,background:C.s2,color:C.muted,
+                  fontSize:13,fontWeight:700,cursor:wechatLoading?"default":"pointer",whiteSpace:"nowrap",opacity:wechatLoading?0.6:1}}>解绑</button>
+            )}
+          </div>
+          <div style={{fontSize:12,color:wechatStatus?.bound?C.ok:C.muted,marginTop:8,overflowWrap:"anywhere"}}>
+            {wechatError?`状态读取失败：${wechatError}`:wechatStatus?.bound?`最近互动：${formatWechatLastSeen(wechatStatus.lastSeen)}`:"绑定后，每日任务和错因修复会优先从微信送达。"}
+          </div>
+        </div>
+      </div>
+  );
+}
+
+function PageWechatCoach({authUser, authToken, onOpenAuth, onNav}){
+  const {isMobile}=useBP();
+  return(
+    <div style={{padding:isMobile?14:28,maxWidth:isMobile?"100%":960,margin:"0 auto",width:"100%",minWidth:0,overflowX:"hidden"}}>
+      <section style={{background:C.s1,border:`1px solid ${C.geo}28`,borderRadius:18,
+        padding:isMobile?"22px 18px":"30px 34px",marginBottom:14,minWidth:0,overflow:"hidden"}}>
+        <div style={{fontSize:12,color:C.geo,letterSpacing:3,textTransform:"uppercase",fontWeight:900,marginBottom:9}}>
+          WeChat AI Coach
+        </div>
+        <h1 style={{margin:"0 0 10px",fontSize:isMobile?30:40,lineHeight:1.1,color:C.text,fontWeight:950}}>
+          微信里的树脉 AI 教练
+        </h1>
+        <p style={{margin:0,fontSize:14,color:C.muted,lineHeight:1.85,maxWidth:700,overflowWrap:"anywhere"}}>
+          这里是总入口的通用能力，不属于数学单科导航。绑定后，数学和英语的计划、提醒、发题沟通都可以进入微信私聊。
+        </p>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
+          <Tag c={C.geo}>ClawBot 私聊绑定</Tag>
+          <Tag c={C.alg}>每日提醒</Tag>
+          <Tag c={C.purple}>个性化沟通</Tag>
+        </div>
+      </section>
+      <WechatCoachPanel authUser={authUser} authToken={authToken} onOpenAuth={onOpenAuth}/>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:14}}>
+        <button onClick={()=>onNav("home")}
+          style={{padding:"10px 14px",borderRadius:10,cursor:"pointer",
+            border:`1px solid ${C.border}`,background:C.s1,color:C.text,fontWeight:850}}>
+          返回总首页
+        </button>
+        <button onClick={()=>onNav("math")}
+          style={{padding:"10px 14px",borderRadius:10,cursor:"pointer",
+            border:`1px solid ${C.alg}42`,background:C.alg+"14",color:C.alg,fontWeight:850}}>
+          进入数学
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PageMe({mastered, wrongSet, basicWrongSet, aiModel, setAiModel, dsKey, setDsKey, dbKey, setDbKey, authUser, authToken, onOpenAuth, onNav, onClear}){
   const [nickname, setNickname]=useState(()=>localStorage.getItem("shumai_nickname")||"");
   const [editingName, setEditingName]=useState(false);
   const [nameInput, setNameInput]=useState("");
@@ -3918,9 +5788,9 @@ function PageMe({mastered, wrongSet, basicWrongSet, aiModel, setAiModel, dsKey, 
   const GRADES=["七年级","八年级","九年级"];
 
   return(
-    <div style={{padding:"16px 16px calc(72px + env(safe-area-inset-bottom))",maxWidth:480,margin:"0 auto"}}>
+    <div style={{padding:"16px 16px calc(72px + env(safe-area-inset-bottom))",maxWidth:480,margin:"0 auto",width:"100%",minWidth:0,overflowX:"hidden"}}>
       {/* 用户卡片 */}
-      <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:16,padding:20,marginBottom:16,display:"flex",alignItems:"center",gap:14}}>
+      <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:16,padding:20,marginBottom:16,display:"flex",alignItems:"center",gap:14,minWidth:0,overflow:"hidden"}}>
         <div style={{width:56,height:56,borderRadius:"50%",flexShrink:0,
           background:`linear-gradient(135deg,${C.alg},#a78bfa)`,
           display:"flex",alignItems:"center",justifyContent:"center",
@@ -3929,24 +5799,24 @@ function PageMe({mastered, wrongSet, basicWrongSet, aiModel, setAiModel, dsKey, 
         </div>
         <div style={{flex:1,minWidth:0}}>
           {editingName?(
-            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <div style={{display:"flex",gap:6,alignItems:"center",minWidth:0}}>
               <input value={nameInput} onChange={e=>setNameInput(e.target.value)}
                 onKeyDown={e=>e.key==="Enter"&&saveNickname()}
                 placeholder="输入昵称" autoFocus
                 style={{flex:1,padding:"5px 10px",borderRadius:8,fontSize:15,
-                  background:C.s2,border:`1px solid ${C.alg}`,color:C.text,outline:"none"}}/>
+                  background:C.s2,border:`1px solid ${C.alg}`,color:C.text,outline:"none",minWidth:0}}/>
               <button onClick={saveNickname}
                 style={{padding:"5px 12px",borderRadius:8,background:C.alg,
                   color:"white",border:"none",fontSize:14,fontWeight:700,cursor:"pointer"}}>保存</button>
             </div>
           ):(
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-              <span style={{fontSize:18,fontWeight:700,color:C.text}}>{nickname||"点击设置昵称"}</span>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,minWidth:0}}>
+              <span style={{fontSize:18,fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nickname||"点击设置昵称"}</span>
               <button onClick={()=>{setNameInput(nickname);setEditingName(true);}}
                 style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:C.muted,padding:"2px 6px",borderRadius:4}}>✏️</button>
             </div>
           )}
-          <div style={{display:"flex",gap:4}}>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
             {GRADES.map(g=>(
               <button key={g} onClick={()=>{setGrade(g);localStorage.setItem("shumai_grade",g);}}
                 style={{padding:"2px 8px",borderRadius:10,fontSize:12,cursor:"pointer",border:"none",
@@ -3957,8 +5827,10 @@ function PageMe({mastered, wrongSet, basicWrongSet, aiModel, setAiModel, dsKey, 
         </div>
       </div>
 
+      <WechatCoachPanel authUser={authUser} authToken={authToken} onOpenAuth={onOpenAuth}/>
+
       {/* 学情数据卡 */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:10,marginBottom:16,minWidth:0}}>
         {[
           {label:"已掌握",value:mastered.size,unit:"个知识点",color:C.ok,icon:"✓"},
           {label:"错题本",value:wrongSet.size+basicWrongSet.size,unit:"道待复习",color:C.red,icon:"📋"},
@@ -3966,7 +5838,7 @@ function PageMe({mastered, wrongSet, basicWrongSet, aiModel, setAiModel, dsKey, 
           {label:"打卡天数",value:checkDays,unit:"天连续学习",color:C.alg,icon:"🔥"},
         ].map(item=>(
           <div key={item.label} style={{background:C.s1,border:`1px solid ${C.border}`,
-            borderRadius:12,padding:"14px 16px",textAlign:"center"}}>
+            borderRadius:12,padding:"14px 16px",textAlign:"center",minWidth:0,overflow:"hidden"}}>
             <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{item.icon} {item.label}</div>
             <div style={{fontSize:26,fontWeight:900,color:item.color,lineHeight:1}}>{item.value}</div>
             <div style={{fontSize:11,color:C.muted,marginTop:2}}>{item.unit}</div>
@@ -4052,7 +5924,7 @@ function PageMe({mastered, wrongSet, basicWrongSet, aiModel, setAiModel, dsKey, 
       </div>
 
       <div style={{textAlign:"center",padding:"8px 0",color:C.dim,fontSize:12}}>
-        数脉 ShuMai · 2026中考版 · 1334道题
+        树脉 ShuMai · 2026中考版 · 1334道题
       </div>
     </div>
   );
@@ -4061,6 +5933,90 @@ function PageMe({mastered, wrongSet, basicWrongSet, aiModel, setAiModel, dsKey, 
 /* ════════════════════════════════════════════════════════════
    DESKTOP SIDEBAR — 桌面端个人学习仪表盘
 ════════════════════════════════════════════════════════════ */
+function PortalSidebar({navigate, authUser, onOpenAuth}){
+  const nickname = authUser?.nickname || localStorage.getItem("shumai_nickname") || "";
+  const grade = authUser?.grade || localStorage.getItem("shumai_grade") || "未设置学段";
+  const SectionLabel=({color,children})=>(
+    <div style={{fontSize:13,color:color||C.dim,letterSpacing:"1.2px",
+      textTransform:"uppercase",padding:"14px 12px 7px",fontWeight:800}}>
+      {children}
+    </div>
+  );
+  const RowButton=({icon,label,sub,color,onClick})=>(
+    <button onClick={onClick}
+      style={{width:"100%",padding:"10px 12px",borderRadius:10,cursor:"pointer",
+        textAlign:"left",background:color+"10",border:`1px solid ${color}26`,
+        display:"flex",alignItems:"center",gap:9,marginBottom:6}}>
+      <span style={{fontSize:18,color,flexShrink:0}}>{icon}</span>
+      <span style={{minWidth:0}}>
+        <span style={{display:"block",fontSize:15,fontWeight:850,color}}>{label}</span>
+        <span style={{display:"block",fontSize:12,color:C.muted,marginTop:2,lineHeight:1.45}}>{sub}</span>
+      </span>
+    </button>
+  );
+
+  return(
+    <div style={{height:"100%",overflowY:"auto",display:"flex",flexDirection:"column",
+      scrollbarWidth:"none",msOverflowStyle:"none"}}>
+      <div style={{padding:"12px 12px 0"}}>
+        <div style={{background:C.s2,borderRadius:12,padding:"12px 12px",
+          display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:42,height:42,borderRadius:"50%",flexShrink:0,
+            background:`linear-gradient(135deg,${C.alg},${C.geo})`,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:18,fontWeight:950,color:"white"}}>
+            {nickname?nickname[0].toUpperCase():"我"}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:16,fontWeight:900,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              {nickname || "未登录 / 游客"}
+            </div>
+            <div style={{fontSize:13,color:C.muted,marginTop:2}}>{grade}</div>
+          </div>
+        </div>
+      </div>
+
+      <SectionLabel color={C.alg}>学科入口</SectionLabel>
+      <div style={{padding:"0 10px"}}>
+        <RowButton icon="∑" label="进入数学" sub="打开数学 AI 教练主页" color={C.alg} onClick={()=>navigate("math")}/>
+        <RowButton icon="A" label="查看英语规划" sub="英语体系后续专题建设" color={C.geo} onClick={()=>navigate("english")}/>
+      </div>
+
+      <SectionLabel color={C.geo}>通用能力</SectionLabel>
+      <div style={{padding:"0 10px"}}>
+        <RowButton icon="⌁" label="微信 AI 教练" sub="绑定后在微信里收提醒、发题、沟通" color={C.geo} onClick={()=>navigate("me")}/>
+        <RowButton icon="◎" label="反向规划" sub="目标、时间、测评共同生成路线" color={C.purple} onClick={()=>navigate("plan")}/>
+      </div>
+
+      <SectionLabel>系统阶段</SectionLabel>
+      <div style={{padding:"0 10px"}}>
+        {[
+          ["总首页","双学科入口层",C.alg],
+          ["数学","已开放",C.ok],
+          ["英语","规划中",C.geo],
+        ].map(([label,sub,color])=>(
+          <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+            padding:"8px 10px",borderRadius:9,background:C.s2,border:`1px solid ${C.border}`,marginBottom:6}}>
+            <span style={{fontSize:14,fontWeight:850,color:C.text}}>{label}</span>
+            <span style={{fontSize:12,fontWeight:850,color,background:color+"12",padding:"2px 7px",borderRadius:7}}>{sub}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{marginTop:"auto",padding:"12px 10px 16px"}}>
+        <button onClick={authUser?()=>navigate("me"):onOpenAuth}
+          style={{width:"100%",padding:"10px 12px",borderRadius:10,cursor:"pointer",
+            background:C.s1,border:`1px solid ${C.border}`,color:C.text,fontWeight:850}}>
+          {authUser?"我的账户":"登录 / 注册"}
+        </button>
+        <div style={{fontSize:12,color:C.dim,lineHeight:1.7,marginTop:10,textAlign:"center"}}>
+          树脉 ShuMai · AI Learning OS
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DesktopSidebar({mastered, wrongSet, basicWrongSet, navigate}){
   const [editingName, setEditingName]=useState(false);
   const [nameInput, setNameInput]=useState("");
@@ -4118,7 +6074,8 @@ function DesktopSidebar({mastered, wrongSet, basicWrongSet, navigate}){
   );
 
   return(
-    <div style={{height:"100%",overflowY:"auto",display:"flex",flexDirection:"column"}}>
+    <div style={{height:"100%",overflowY:"auto",display:"flex",flexDirection:"column",
+      scrollbarWidth:"none",msOverflowStyle:"none"}}>
 
       {/* ① 用户卡片 */}
       <div style={{padding:"12px 12px 0"}}>
@@ -4174,13 +6131,13 @@ function DesktopSidebar({mastered, wrongSet, basicWrongSet, navigate}){
             ✓ 今日无待复习错题
           </div>
         )}
-        <button onClick={()=>navigate("modules")}
+        <button onClick={()=>navigate("math")}
           style={{width:"100%",padding:"10px 12px",borderRadius:10,cursor:"pointer",
             textAlign:"left",background:C.alg+"12",border:`1px solid ${C.alg}22`,
             display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:18}}>📚</span>
           <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:600,color:C.alg}}>继续学习</div>
+            <div style={{fontSize:16,fontWeight:600,color:C.alg}}>进入数学驾驶舱</div>
             <div style={{fontSize:13,color:C.muted}}>
               {weakTop3[0]?`推荐：${weakTop3[0].name}`:"选择知识点开始"}
             </div>
@@ -4277,10 +6234,14 @@ function DesktopSidebar({mastered, wrongSet, basicWrongSet, navigate}){
       <SectionLabel>工具</SectionLabel>
       <div style={{padding:"0 10px 16px"}}>
         {[
-          {icon:"◎",label:"知识图谱",v:"graph",color:C.alg},
+          {icon:"👤",label:"我的",v:"me",color:C.alg},
+          {icon:"∑",label:"数学驾驶舱",v:"math",color:C.alg},
+          {icon:"◎",label:"知识树",v:"graph",color:C.alg},
+          {icon:"📋",label:"错因修复",v:"wrong",color:C.red},
+          {icon:"🖨",label:"纸质训练单",v:"printplan",color:C.geo},
           {icon:"📄",label:"试卷分析",v:"paper",color:"#a78bfa"},
           {icon:"📸",label:"作业识别",v:"ocr",color:"#22d3ee"},
-          {icon:"🤖",label:"学伴Agent",v:"agent",color:"#a78bfa"},
+          {icon:"🤖",label:"AI 学伴",v:"agent",color:"#a78bfa"},
         ].map(t=>(
           <button key={t.v} onClick={()=>navigate(t.v)}
             style={{width:"100%",display:"flex",alignItems:"center",gap:9,
@@ -4303,28 +6264,31 @@ function DesktopSidebar({mastered, wrongSet, basicWrongSet, navigate}){
 function BottomTabBar({view, navigate, wrongCount, basicWrongCount}){
   const totalWrong = wrongCount + basicWrongCount;
   const tabs = [
-    {id:"home",    icon:"⊡", label:"首页"},
-    {id:"modules", icon:"▦", label:"学习"},
+    {id:"home",    icon:"⊡", label:"今日"},
+    {id:"math",    icon:"∑", label:"数学"},
+    {id:"graph",   icon:"◎", label:"知识树"},
     {id:"practice",icon:"✎", label:"练题"},
-    {id:"wrong",   icon:"📋",label:"错题", badge: totalWrong},
-    {id:"me",      icon:"👤", label:"我的"},
+    {id:"wrong",   icon:"※",label:"错因", badge: totalWrong},
   ];
   const active = tabs.some(t=>t.id===view) ? view : "home";
   return(
     <nav style={{
       position:"fixed",bottom:0,left:0,right:0,zIndex:200,
+      width:"100%",maxWidth:"100%",overflow:"hidden",
       height:`calc(56px + env(safe-area-inset-bottom))`,
       paddingBottom:"env(safe-area-inset-bottom)",
       background:C.s1,borderTop:`1px solid ${C.border}`,
-      display:"flex",alignItems:"stretch",
+      display:"grid",gridTemplateColumns:`repeat(${tabs.length},minmax(0,1fr))`,
+      alignItems:"stretch",
     }}>
       {tabs.map(t=>{
         const isActive = active===t.id || (t.id==="home" && !tabs.some(x=>x.id===view));
         return(
           <button key={t.id} onClick={()=>navigate(t.id)}
-            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",
+            style={{display:"flex",flexDirection:"column",alignItems:"center",
               justifyContent:"center",gap:2,border:"none",background:"none",
               cursor:"pointer",position:"relative",padding:"4px 0",
+              minWidth:0,
               color:isActive?C.alg:C.muted,transition:"color .15s"}}>
             <span style={{fontSize:20,lineHeight:1,filter:isActive?"none":"grayscale(0.4)"}}>{t.icon}</span>
             <span style={{fontSize:10,fontWeight:isActive?700:400,letterSpacing:0.3}}>{t.label}</span>
@@ -4409,7 +6373,7 @@ function DiagQuickTest({onComplete}) {
       <div style={{maxWidth:520,textAlign:"center"}}>
         <div style={{fontSize:60,marginBottom:20}}>📐</div>
         <h1 style={{fontSize:28,fontWeight:900,color:C.text,margin:"0 0 12px"}}>
-          欢迎来到数脉
+          欢迎来到树脉
         </h1>
         <p style={{fontSize:18,color:C.muted,lineHeight:1.8,margin:"0 0 8px"}}>
           让我们花 <b style={{color:C.alg}}>5 分钟</b> 做一个快速测试
@@ -4548,7 +6512,7 @@ function DiagQuickTest({onComplete}) {
           <p style={{fontSize:17,color:C.muted}}>
             {pct>=80?"基础扎实！重点突破薄弱环节即可":
              pct>=50?"中等水平，系统学习可以大幅提分":
-             "别担心，数脉会帮你一步步补回来"}
+             "别担心，树脉会帮你一步步补回来"}
           </p>
           </>; })()}
         </div>
@@ -5790,7 +7754,7 @@ function VariantCard({v,idx}) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   🤖 PAGE: 学伴Agent — 个性化学习路径规划 (M4)
+   🤖 PAGE: AI 学伴 — 个性化学习路径规划 (M4)
 ════════════════════════════════════════════════════════════ */
 function PageAgent({onNav}) {
   const {isMobile}=useBP();
@@ -5813,7 +7777,7 @@ function PageAgent({onNav}) {
   const PRIORITY_COLOR={high:C.red,medium:C.sta,low:C.muted};
 
   const generate=async()=>{
-    if(!token){alert("请先登录后使用学伴Agent");return;}
+    if(!token){alert("请先登录后使用 AI 学伴");return;}
     setLoading(true);setPlan(null);
     try{
       const r=await fetch(`${API}/api/ai/learning-path`,{
@@ -5842,7 +7806,7 @@ function PageAgent({onNav}) {
             background:C.s2,color:C.text,border:`1px solid ${C.border}`,fontSize:14}}>
           ← 返回
         </button>
-        <h2 style={{fontSize:22,fontWeight:900,color:C.text,margin:0}}>🤖 学伴Agent · 个性化学习规划</h2>
+        <h2 style={{fontSize:22,fontWeight:900,color:C.text,margin:0}}>🤖 AI 学伴 · 个性化学习规划</h2>
       </div>
 
       {/* 参数设置 */}
@@ -6213,6 +8177,16 @@ function PageParent({onNav}) {
   const [msg,setMsg]=useState("");
   const [bindPhone,setBindPhone]=useState("");
 
+  const taskData=useMemo(()=>{
+    try{return JSON.parse(daily?.todayTask?.task_data||"{}");}
+    catch{return {};}
+  },[daily]);
+  const pendingWrong=Number(daily?.wrongPending??selectedChild?.wrong_pending??0);
+  const needsIntervention=!!daily&&(!daily.checkedIn||pendingWrong>5);
+  const progressPct=weekly?.totalTopics?Math.round(weekly.totalMastered/weekly.totalTopics*100):0;
+  const currentAdvice=daily?.advice||{};
+  const weeklyCheckins=weekly?.weekCheckins||[];
+
   const API=window.__SHUMAI_API||"";
   const token=window.__SHUMAI_TOKEN||"";
   const headers={"Content-Type":"application/json","Authorization":`Bearer ${token}`};
@@ -6258,160 +8232,259 @@ function PageParent({onNav}) {
     setLoading(false);
   };
 
+  const shell={
+    padding:isMobile?16:24,
+    maxWidth:1120,
+    margin:"0 auto",
+  };
+  const panel=(accent=C.geo,extra={})=>({
+    borderRadius:14,
+    background:`linear-gradient(145deg,${C.s1},${C.s2})`,
+    border:`1px solid ${accent}24`,
+    boxShadow:"0 18px 60px rgba(0,0,0,.22)",
+    ...extra,
+  });
+  const quietCard=(extra={})=>({
+    borderRadius:10,
+    background:"rgba(13,24,37,.72)",
+    border:`1px solid ${C.border}`,
+    ...extra,
+  });
+  const smallLabel={fontSize:12,color:C.muted,fontWeight:800,letterSpacing:0};
+  const childName=selectedChild?.nickname||"孩子";
+  const todayThings=[
+    {k:"复述卡点",v:currentAdvice.stuck||"先确认今天主要卡在哪一个知识点，不扩大问题范围。",t:"5 分钟"},
+    {k:"看提示做对",v:currentAdvice.action||"只完成一组关键修复题，优先让孩子体验“我能修回来”。",t:"10 分钟"},
+    {k:"收束鼓励",v:currentAdvice.encourage||"鼓励今天愿意开始的动作，不用追问全部知识点。",t:"1 句话"},
+  ];
+  const evidence=[
+    {label:"今日打卡",value:daily?daily.checkedIn?"已完成":"未完成":"待选择",color:daily?.checkedIn?C.ok:C.sta},
+    {label:"今日任务",value:daily?.todayTask?`${taskData.newCount||0}题`:"未生成",color:C.geo},
+    {label:"待清除错题",value:`${pendingWrong||0}题`,color:pendingWrong>5?C.red:C.sta},
+    {label:"本周新掌握",value:weekly?`+${weekly.weekNewMastered}`:"—",color:C.ok},
+  ];
+  const parentScripts=[
+    {label:"可以这样说",text:currentAdvice.encourage||"你今天先把一个点修稳就很好，我们不急着证明都会。",color:C.ok},
+    {label:"暂时别这样催",text:currentAdvice.avoid||"不要问“怎么又错了”，先把问题缩小到一个可修复动作。",color:C.red},
+    {label:"需要观察",text:needsIntervention?"今晚做 15 分钟轻干预，若连续两天未完成关键任务，再调整计划。":"保持陪伴即可，不需要额外加题。",color:C.sta},
+  ];
+
   return (
-    <div style={{padding:isMobile?16:22,maxWidth:800}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+    <div style={shell}>
+      <div style={{display:"flex",alignItems:isMobile?"flex-start":"center",gap:12,marginBottom:18,flexWrap:"wrap"}}>
         <button onClick={()=>onNav("home")}
-          style={{padding:"6px 14px",borderRadius:8,cursor:"pointer",
-            background:C.s2,color:C.text,border:`1px solid ${C.border}`,fontSize:14}}>
+          style={{padding:"8px 14px",borderRadius:8,cursor:"pointer",
+            background:C.s2,color:C.text,border:`1px solid ${C.border}`,fontSize:14,fontWeight:800}}>
           ← 返回
         </button>
-        <h2 style={{fontSize:22,fontWeight:900,color:C.text,margin:0}}>👨‍👩‍👦 家长看板</h2>
-        {msg&&<span style={{fontSize:13,color:msg.startsWith("✅")?C.ok:C.red,fontWeight:600,marginLeft:8}}>{msg}</span>}
+        <div style={{flex:1,minWidth:220}}>
+          <div style={{fontSize:12,color:C.geo,fontWeight:900,marginBottom:4}}>树脉 AI 家长端</div>
+          <h2 style={{fontSize:isMobile?24:32,fontWeight:950,color:C.text,margin:0,letterSpacing:0}}>
+            家长陪伴工作台
+          </h2>
+          <div style={{fontSize:13,color:C.muted,lineHeight:1.7,marginTop:4}}>
+            少一点复杂图表，多一点今晚怎么陪、怎么说、什么时候该介入。
+          </div>
+        </div>
+        {msg&&<span style={{fontSize:13,color:msg.startsWith("✅")?C.ok:C.red,fontWeight:800}}>{msg}</span>}
       </div>
 
-      {/* 绑定孩子 */}
-      <div style={{padding:16,borderRadius:12,background:C.s1,border:`1px solid ${C.border}`,marginBottom:16}}>
-        <div style={{fontWeight:700,color:C.text,marginBottom:10}}>🔗 绑定孩子</div>
-        <div style={{display:"flex",gap:8}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"320px minmax(0,1fr)",gap:16,alignItems:"start"}}>
+        <div style={{display:"grid",gap:12}}>
+          <div style={panel(C.geo,{padding:16})}>
+            <div style={{fontWeight:900,color:C.text,marginBottom:4}}>绑定孩子</div>
+            <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginBottom:12}}>
+              输入孩子注册手机号后，家长端会把学习数据翻译成行动建议。
+            </div>
+            <div style={{display:"flex",gap:8}}>
           <input value={bindPhone} onChange={e=>setBindPhone(e.target.value)}
             placeholder="输入孩子注册手机号"
             style={{flex:1,padding:"8px 14px",borderRadius:8,fontSize:14,
               background:C.s2,border:`1px solid ${C.border}`,color:C.text,outline:"none"}}/>
           <button onClick={bindChild}
-            style={{padding:"8px 20px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:700,
+            style={{padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:900,
               background:C.geo,color:"white",border:"none"}}>
             绑定
           </button>
-        </div>
-      </div>
-
-      {/* 孩子列表 */}
-      {children.length===0&&!loading&&(
-        <div style={{textAlign:"center",padding:40,color:C.muted}}>
-          暂未绑定孩子，请输入孩子的注册手机号进行绑定
-        </div>
-      )}
-
-      {children.map(child=>(
-        <div key={child.id} onClick={()=>selectChild(child)}
-          style={{padding:16,borderRadius:12,background:C.s1,
-            border:`1px solid ${selectedChild?.id===child.id?C.geo+"55":C.border}`,
-            marginBottom:10,cursor:"pointer"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
-              <span style={{fontSize:18,fontWeight:800,color:C.text}}>{child.nickname}</span>
-              <span style={{fontSize:13,color:C.muted,marginLeft:8}}>{child.grade}年级</span>
             </div>
-            <div style={{display:"flex",gap:12}}>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontSize:20,fontWeight:900,color:C.ok}}>{child.mastered}</div>
-                <div style={{fontSize:10,color:C.muted}}>掌握</div>
+          </div>
+
+          <div style={panel(C.alg,{padding:14})}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{fontWeight:900,color:C.text}}>选择孩子</div>
+              <div style={{fontSize:12,color:C.muted}}>{children.length} 个已绑定</div>
+            </div>
+            {children.length===0&&!loading&&(
+              <div style={{padding:"26px 8px",color:C.muted,fontSize:13,lineHeight:1.8,textAlign:"center"}}>
+                暂未绑定孩子。绑定后，这里会出现孩子的学习陪伴卡。
               </div>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontSize:20,fontWeight:900,color:parseInt(child.wrong_pending)>5?C.red:C.sta}}>
-                  {child.wrong_pending}
-                </div>
-                <div style={{fontSize:10,color:C.muted}}>错题</div>
-              </div>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontSize:20,fontWeight:900,color:C.sta}}>{child.checkin_days}</div>
-                <div style={{fontSize:10,color:C.muted}}>打卡天</div>
-              </div>
+            )}
+            <div style={{display:"grid",gap:8}}>
+              {children.map(child=>{
+                const active=selectedChild?.id===child.id;
+                const childWrongCount=Number(child.wrong_pending||0);
+                return (
+                  <button key={child.id} onClick={()=>selectChild(child)}
+                    style={{textAlign:"left",padding:12,borderRadius:10,background:active?`${C.geo}12`:C.s2,
+                      border:`1px solid ${active?C.geo+"66":C.border}`,cursor:"pointer",color:C.text}}>
+                    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}>
+                      <div>
+                        <div style={{fontSize:16,fontWeight:950}}>{child.nickname}</div>
+                        <div style={{fontSize:12,color:C.muted,marginTop:3}}>{child.grade}年级 · 连续陪伴 {child.checkin_days} 天</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:18,fontWeight:950,color:childWrongCount>5?C.red:C.sta}}>{childWrongCount}</div>
+                        <div style={{fontSize:11,color:C.muted}}>待清除</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
-      ))}
 
-      {/* 详情面板 */}
-      {selectedChild&&!loading&&(
-        <div style={{marginTop:16}}>
-          {/* 今日学情 */}
-          {daily&&(
-            <div style={{padding:16,borderRadius:12,background:C.s1,border:`1px solid ${C.alg}33`,marginBottom:12}}>
-              <div style={{fontWeight:700,color:C.alg,marginBottom:10}}>📅 今日学情</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-                <div style={{textAlign:"center",padding:10,borderRadius:8,background:C.s2}}>
-                  <div style={{fontSize:24,color:daily.checkedIn?C.ok:C.red}}>
-                    {daily.checkedIn?"✅":"❌"}
-                  </div>
-                  <div style={{fontSize:12,color:C.muted}}>今日打卡</div>
+        <div style={{minWidth:0}}>
+          {!selectedChild&&!loading&&(
+            <div style={panel(C.geo,{padding:isMobile?18:28,minHeight:280,display:"grid",placeItems:"center",textAlign:"center"})}>
+              <div>
+                <div style={{fontSize:13,color:C.geo,fontWeight:900,marginBottom:10}}>等待选择孩子</div>
+                <div style={{fontSize:isMobile?24:34,fontWeight:950,color:C.text,letterSpacing:0,marginBottom:10}}>
+                  家长端不制造焦虑，只给下一步。
                 </div>
-                <div style={{textAlign:"center",padding:10,borderRadius:8,background:C.s2}}>
-                  <div style={{fontSize:24,fontWeight:900,color:C.sta}}>
-                    {daily.todayTask?`${JSON.parse(daily.todayTask.task_data||"{}").newCount||0}题`:"—"}
-                  </div>
-                  <div style={{fontSize:12,color:C.muted}}>今日任务</div>
-                </div>
-                <div style={{textAlign:"center",padding:10,borderRadius:8,background:C.s2}}>
-                  <div style={{fontSize:24,fontWeight:900,color:parseInt(daily.wrongPending)>5?C.red:C.muted}}>
-                    {daily.wrongPending}
-                  </div>
-                  <div style={{fontSize:12,color:C.muted}}>待解错题</div>
+                <div style={{fontSize:14,color:C.muted,lineHeight:1.8,maxWidth:520}}>
+                  选择孩子后，树脉会把今日任务、错题、周报翻译成陪伴建议：哪里卡住、是否需要干预、今晚做什么、该怎么鼓励。
                 </div>
               </div>
             </div>
           )}
 
-          {/* 周报 */}
-          {weekly&&(
-            <div style={{padding:16,borderRadius:12,background:C.s1,border:`1px solid ${C.geo}33`,marginBottom:12}}>
-              <div style={{fontWeight:700,color:C.geo,marginBottom:10}}>📊 本周学习周报</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:12}}>
-                <div style={{padding:12,borderRadius:8,background:C.s2,textAlign:"center"}}>
-                  <div style={{fontSize:28,fontWeight:900,color:C.ok}}>+{weekly.weekNewMastered}</div>
-                  <div style={{fontSize:12,color:C.muted}}>本周新掌握</div>
-                </div>
-                <div style={{padding:12,borderRadius:8,background:C.s2,textAlign:"center"}}>
-                  <div style={{fontSize:28,fontWeight:900,color:C.sta}}>{weekly.weekWrongResolved}</div>
-                  <div style={{fontSize:12,color:C.muted}}>解决错题</div>
+          {selectedChild&&!loading&&(
+            <div style={{display:"grid",gap:14}}>
+              <div style={panel(needsIntervention?C.sta:C.geo,{padding:isMobile?18:24})}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+                  <div style={{maxWidth:700}}>
+                    <div style={{fontSize:12,color:C.geo,fontWeight:950,marginBottom:8}}>树脉 AI 今日判断</div>
+                    <div style={{fontSize:isMobile?24:36,fontWeight:950,color:C.text,lineHeight:1.18,letterSpacing:0}}>
+                      {currentAdvice.status||`${childName}今天适合先修一个薄弱点，不需要扩大训练量。`}
+                    </div>
+                    <div style={{fontSize:14,color:C.muted,lineHeight:1.8,marginTop:12}}>
+                      卡点：{currentAdvice.stuck||"系统会优先从待清除错题和今日任务中定位一个最小可修复点。"}
+                    </div>
+                  </div>
+                  <div style={{minWidth:170,padding:14,borderRadius:12,background:needsIntervention?`${C.sta}14`:`${C.geo}14`,
+                    border:`1px solid ${needsIntervention?C.sta:C.geo}44`}}>
+                    <div style={smallLabel}>是否需要干预</div>
+                    <div style={{fontSize:22,fontWeight:950,color:needsIntervention?C.sta:C.geo,marginTop:6}}>
+                      {needsIntervention?"轻干预":"陪伴即可"}
+                    </div>
+                    <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginTop:6}}>
+                      {needsIntervention?"只干预今天最小动作，不加额外压力。":"保持节奏，关注完成后的反馈。"}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* 打卡日历 */}
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:13,color:C.muted,marginBottom:6}}>📅 本周打卡</div>
-                <div style={{display:"flex",gap:4}}>
-                  {["一","二","三","四","五","六","日"].map((d,i)=>{
-                    const now=new Date();
-                    const dayOfWeek=now.getDay()||7;
-                    const date=new Date(now);
-                    date.setDate(now.getDate()-(dayOfWeek-1)+i);
-                    const dateStr=date.toISOString().split("T")[0];
-                    const checked=weekly.weekCheckins?.some(c=>(typeof c==="string"?c:new Date(c).toISOString()).startsWith(dateStr));
-                    return (
-                      <div key={i} style={{flex:1,textAlign:"center",padding:"6px 0",borderRadius:6,
-                        background:checked?C.ok+"20":C.s2,border:`1px solid ${checked?C.ok+"44":C.border}`}}>
-                        <div style={{fontSize:11,color:C.muted}}>周{d}</div>
-                        <div style={{fontSize:16,color:checked?C.ok:C.dim}}>{checked?"✓":"·"}</div>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.1fr .9fr",gap:14}}>
+                <div style={panel(C.geo,{padding:16})}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div>
+                      <div style={{fontSize:12,color:C.geo,fontWeight:950}}>今晚关键动作</div>
+                      <div style={{fontSize:18,fontWeight:950,color:C.text,marginTop:4}}>只做三件事</div>
+                    </div>
+                    <button onClick={()=>onNav("printplan")}
+                      style={{padding:"8px 12px",borderRadius:8,border:`1px solid ${C.geo}55`,background:`${C.geo}14`,
+                        color:C.geo,fontWeight:900,cursor:"pointer"}}>
+                      打印训练单
+                    </button>
+                  </div>
+                  <div style={{display:"grid",gap:10}}>
+                    {todayThings.map((item,i)=>(
+                      <div key={item.k} style={{display:"grid",gridTemplateColumns:"44px minmax(0,1fr) 58px",gap:10,alignItems:"center",
+                        padding:12,borderRadius:10,background:i===0?`${C.geo}10`:C.s2,border:`1px solid ${i===0?C.geo+"3d":C.border}`}}>
+                        <div style={{width:32,height:32,borderRadius:8,display:"grid",placeItems:"center",fontWeight:950,
+                          color:C.bg,background:i===0?C.geo:C.sta}}>
+                          {i+1}
+                        </div>
+                        <div>
+                          <div style={{fontSize:14,fontWeight:950,color:C.text}}>{item.k}</div>
+                          <div style={{fontSize:13,color:C.muted,lineHeight:1.65,marginTop:3}}>{item.v}</div>
+                        </div>
+                        <div style={{fontSize:12,color:C.geo,fontWeight:900,textAlign:"right"}}>{item.t}</div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+                </div>
+
+                <div style={panel(C.sta,{padding:16})}>
+                  <div style={{fontSize:12,color:C.sta,fontWeight:950,marginBottom:8}}>沟通脚本</div>
+                  <div style={{display:"grid",gap:9}}>
+                    {parentScripts.map(item=>(
+                      <div key={item.label} style={quietCard({padding:12,borderColor:`${item.color}33`})}>
+                        <div style={{fontSize:12,color:item.color,fontWeight:950,marginBottom:5}}>{item.label}</div>
+                        <div style={{fontSize:13,color:C.text,lineHeight:1.7}}>{item.text}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {/* 总进度条 */}
-              <div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:C.muted,marginBottom:4}}>
-                  <span>总进度</span>
-                  <span>{weekly.totalMastered}/{weekly.totalTopics}个知识点</span>
+              <div style={panel(C.alg,{padding:16})}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}>
+                  <div>
+                    <div style={{fontSize:12,color:C.alg,fontWeight:950}}>数据证据</div>
+                    <div style={{fontSize:18,fontWeight:950,color:C.text,marginTop:4}}>用来解释行动，不用来制造压力</div>
+                  </div>
+                  <div style={{fontSize:12,color:C.muted}}>总进度 {progressPct}%</div>
                 </div>
-                <div style={{height:10,borderRadius:5,background:C.s3,overflow:"hidden"}}>
-                  <div style={{height:"100%",borderRadius:5,
-                    width:`${Math.round(weekly.totalMastered/weekly.totalTopics*100)}%`,
-                    background:`linear-gradient(90deg,${C.alg},${C.geo})`}}/>
+                <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:10,marginBottom:14}}>
+                  {evidence.map(item=>(
+                    <div key={item.label} style={quietCard({padding:12})}>
+                      <div style={smallLabel}>{item.label}</div>
+                      <div style={{fontSize:22,fontWeight:950,color:item.color,marginTop:6}}>{item.value}</div>
+                    </div>
+                  ))}
                 </div>
-                <div style={{textAlign:"right",fontSize:13,fontWeight:700,marginTop:4,
-                  color:weekly.totalMastered>=150?C.ok:weekly.totalMastered>=100?C.sta:C.red}}>
-                  {Math.round(weekly.totalMastered/weekly.totalTopics*100)}%
-                </div>
+
+                {weekly&&(
+                  <>
+                    <div style={{height:10,borderRadius:99,background:C.s3,overflow:"hidden",marginBottom:12}}>
+                      <div style={{height:"100%",borderRadius:99,width:`${progressPct}%`,
+                        background:`linear-gradient(90deg,${C.alg},${C.geo})`}}/>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,alignItems:"center"}}>
+                      <div style={{fontSize:13,color:C.muted,lineHeight:1.8}}>
+                        本周新掌握 <b style={{color:C.ok}}>+{weekly.weekNewMastered}</b> 个知识点，
+                        清除错题 <b style={{color:C.sta}}>{weekly.weekWrongResolved}</b> 道。
+                        家长只需要确认关键任务有没有完成，不需要每天追问所有章节。
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+                        {["一","二","三","四","五","六","日"].map((d,i)=>{
+                          const now=new Date();
+                          const dayOfWeek=now.getDay()||7;
+                          const date=new Date(now);
+                          date.setDate(now.getDate()-(dayOfWeek-1)+i);
+                          const dateStr=date.toISOString().split("T")[0];
+                          const checked=weeklyCheckins.some(c=>(typeof c==="string"?c:new Date(c).toISOString()).startsWith(dateStr));
+                          return (
+                            <div key={d} style={{textAlign:"center",padding:"7px 0",borderRadius:8,
+                              background:checked?`${C.ok}18`:C.s2,border:`1px solid ${checked?C.ok+"44":C.border}`}}>
+                              <div style={{fontSize:11,color:C.muted}}>周{d}</div>
+                              <div style={{fontSize:15,color:checked?C.ok:C.dim,fontWeight:900}}>{checked?"✓":"·"}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {loading&&<div style={{textAlign:"center",padding:40,color:C.muted}}>⏳ 加载中...</div>}
+      {loading&&<div style={{textAlign:"center",padding:40,color:C.muted}}>正在读取家长陪伴建议...</div>}
     </div>
   );
 }
@@ -6529,250 +8602,433 @@ function PageTeacher({onNav}) {
   };
 
   const TABS=[
-    {id:"classes",label:"🏫 我的班级",color:C.alg},
+    {id:"classes",label:"我的班级",color:C.alg},
     ...(selectedClass?[
-      {id:"students",label:"👨‍🎓 学生学情",color:C.geo},
-      {id:"paper",label:"📄 出卷",color:C.sta},
+      {id:"students",label:"明天课堂",color:C.geo},
+      {id:"paper",label:"讲评小测",color:C.sta},
     ]:[]),
+  ];
+  const advice=report?.tomorrowAdvice||{};
+  const stats=report?.stats||{};
+  const shell={padding:isMobile?16:24,maxWidth:1180,margin:"0 auto"};
+  const panel=(accent=C.geo,extra={})=>({
+    borderRadius:14,
+    background:`linear-gradient(145deg,${C.s1},${C.s2})`,
+    border:`1px solid ${accent}24`,
+    boxShadow:"0 18px 60px rgba(0,0,0,.22)",
+    ...extra,
+  });
+  const quietCard=(extra={})=>({
+    borderRadius:10,
+    background:"rgba(13,24,37,.72)",
+    border:`1px solid ${C.border}`,
+    ...extra,
+  });
+  const smallLabel={fontSize:12,color:C.muted,fontWeight:850,letterSpacing:0};
+  const lessonPlan=advice.tenMinutePlan?.length?advice.tenMinutePlan:[
+    "2分钟：点出题眼和最常见错因",
+    "5分钟：板书一题，追问关键步骤",
+    "3分钟：同类变式，当堂确认入口",
+  ];
+  const reviewQuestions=advice.reviewQuestions||[];
+  const watchStudents=advice.watchStudents||[];
+  const groupRows=[
+    {label:"补差",list:advice.groups?.patch,color:C.red,desc:"先补前置入口，不加难题"},
+    {label:"巩固",list:advice.groups?.steady,color:C.sta,desc:"用同类变式确认稳定"},
+    {label:"提升",list:advice.groups?.challenge,color:C.geo,desc:"给压轴入口或方法迁移"},
+  ];
+  const classEvidence=[
+    {label:"学生",value:stats.total_students||students.length||0,color:C.alg},
+    {label:"平均掌握",value:stats.avg_mastered||0,color:C.geo},
+    {label:"平均错题",value:stats.avg_wrong||0,color:C.sta},
+    {label:"平均打卡",value:stats.avg_checkin?`${stats.avg_checkin}天`:"0天",color:C.purple},
   ];
 
   return (
-    <div style={{padding:isMobile?16:22,maxWidth:1000}}>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+    <div style={shell}>
+      <div style={{display:"flex",alignItems:isMobile?"flex-start":"center",gap:12,marginBottom:18,flexWrap:"wrap"}}>
         <button onClick={()=>onNav("home")}
-          style={{padding:"6px 14px",borderRadius:8,cursor:"pointer",
-            background:C.s2,color:C.text,border:`1px solid ${C.border}`,fontSize:14}}>
+          style={{padding:"8px 14px",borderRadius:8,cursor:"pointer",
+            background:C.s2,color:C.text,border:`1px solid ${C.border}`,fontSize:14,fontWeight:800}}>
           ← 返回
         </button>
-        <h2 style={{fontSize:22,fontWeight:900,color:C.text,margin:0}}>🏫 教师工作台</h2>
-        {msg&&<span style={{fontSize:13,color:msg.startsWith("✅")?C.ok:C.red,fontWeight:600,marginLeft:8}}>{msg}</span>}
+        <div style={{flex:1,minWidth:240}}>
+          <div style={{fontSize:12,color:C.geo,fontWeight:950,marginBottom:4}}>树脉 AI 教师端</div>
+          <h2 style={{fontSize:isMobile?24:32,fontWeight:950,color:C.text,margin:0,letterSpacing:0}}>
+            明天课堂建议工作台
+          </h2>
+          <div style={{fontSize:13,color:C.muted,lineHeight:1.7,marginTop:4}}>
+            不把老师淹没在报表里，先给明天 10 分钟怎么讲、讲哪题、看哪些学生。
+          </div>
+        </div>
+        {msg&&<span style={{fontSize:13,color:msg.startsWith("✅")?C.ok:C.red,fontWeight:800}}>{msg}</span>}
       </div>
 
       {/* Tab */}
-      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{padding:"8px 16px",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:700,
+            style={{padding:"9px 16px",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:850,
               background:tab===t.id?t.color+"22":C.s2,color:tab===t.id?t.color:C.muted,
               border:`1px solid ${tab===t.id?t.color+"55":C.border}`}}>
             {t.label}
           </button>
         ))}
         {selectedClass&&(
-          <span style={{fontSize:13,color:C.muted,padding:"8px 0",marginLeft:6}}>
-            当前：{selectedClass.name}
+          <span style={{fontSize:13,color:C.muted,padding:"8px 0"}}>
+            当前班级：{selectedClass.name}
           </span>
         )}
       </div>
 
-      {loading&&<div style={{textAlign:"center",padding:40,color:C.muted}}>⏳ 加载中...</div>}
+      {loading&&<div style={{textAlign:"center",padding:40,color:C.muted}}>正在读取课堂建议...</div>}
 
       {/* ── 我的班级 ── */}
       {tab==="classes"&&!loading&&(
-        <div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"360px minmax(0,1fr)",gap:16,alignItems:"start"}}>
           {/* 创建班级 */}
-          <div style={{padding:16,borderRadius:12,background:C.s1,border:`1px solid ${C.border}`,marginBottom:16}}>
-            <div style={{fontWeight:700,color:C.text,marginBottom:10}}>➕ 创建班级</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <div style={panel(C.alg,{padding:16})}>
+            <div style={{fontSize:12,color:C.alg,fontWeight:950,marginBottom:6}}>班级入口</div>
+            <div style={{fontSize:20,fontWeight:950,color:C.text,marginBottom:6}}>先建立班级，再生成课堂建议</div>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.7,marginBottom:14}}>
+              学生通过邀请码加入后，树脉会把错题、掌握、活跃度翻译成明天课堂建议。
+            </div>
+            <div style={{display:"grid",gap:8}}>
               <input value={newClassName} onChange={e=>setNewClassName(e.target.value)}
                 placeholder="班级名称（如：九年级1班）"
-                style={{flex:1,minWidth:160,padding:"8px 14px",borderRadius:8,fontSize:14,
+                style={{width:"100%",boxSizing:"border-box",padding:"9px 14px",borderRadius:8,fontSize:14,
                   background:C.s2,border:`1px solid ${C.border}`,color:C.text,outline:"none"}}/>
-              <select value={newGrade} onChange={e=>setNewGrade(parseInt(e.target.value))}
-                style={{padding:"8px 10px",borderRadius:8,fontSize:14,
-                  background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
-                <option value={7}>七年级</option>
-                <option value={8}>八年级</option>
-                <option value={9}>九年级</option>
-              </select>
-              <button onClick={createClass}
-                style={{padding:"8px 20px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:700,
-                  background:C.alg,color:"white",border:"none"}}>
-                创建
-              </button>
+              <div style={{display:"flex",gap:8}}>
+                <select value={newGrade} onChange={e=>setNewGrade(parseInt(e.target.value))}
+                  style={{flex:1,padding:"9px 10px",borderRadius:8,fontSize:14,
+                    background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+                  <option value={7}>七年级</option>
+                  <option value={8}>八年级</option>
+                  <option value={9}>九年级</option>
+                </select>
+                <button onClick={createClass}
+                  style={{padding:"9px 18px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:900,
+                    background:C.alg,color:"white",border:"none"}}>
+                  创建
+                </button>
+              </div>
             </div>
           </div>
 
           {/* 班级列表 */}
-          {classes.length===0?(
-            <div style={{textAlign:"center",padding:40,color:C.muted}}>暂无班级，请先创建</div>
-          ):classes.map(cls=>(
-            <div key={cls.id} style={{padding:16,borderRadius:12,background:C.s1,
-              border:`1px solid ${selectedClass?.id===cls.id?C.alg+"55":C.border}`,marginBottom:8,
-              cursor:"pointer",transition:"all .2s"}}
-              onClick={()=>selectClass(cls)}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <span style={{fontSize:17,fontWeight:800,color:C.text}}>{cls.name}</span>
-                  <span style={{fontSize:13,color:C.muted,marginLeft:10}}>{cls.grade}年级</span>
+          <div style={{display:"grid",gap:10}}>
+            {classes.length===0?(
+              <div style={panel(C.geo,{padding:36,textAlign:"center",color:C.muted})}>暂无班级，请先创建</div>
+            ):classes.map(cls=>(
+              <div key={cls.id} style={{padding:16,borderRadius:12,background:C.s1,
+                border:`1px solid ${selectedClass?.id===cls.id?C.alg+"66":C.border}`,
+                cursor:"pointer",transition:"all .2s"}}
+                onClick={()=>selectClass(cls)}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+                  <div>
+                    <div style={{fontSize:18,fontWeight:950,color:C.text}}>{cls.name}</div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:4}}>{cls.grade}年级 · 点击进入明天课堂建议</div>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <span style={{fontSize:15,fontWeight:950,color:C.alg}}>{cls.student_count}人</span>
+                    <button onClick={e=>{e.stopPropagation();deleteClass(cls.id);}}
+                      style={{padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:12,
+                        background:C.red+"15",color:C.red,border:`1px solid ${C.red}33`}}>
+                      删除
+                    </button>
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <span style={{fontSize:14,fontWeight:700,color:C.alg}}>{cls.student_count}人</span>
-                  <button onClick={e=>{e.stopPropagation();deleteClass(cls.id);}}
-                    style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:12,
-                      background:C.red+"15",color:C.red,border:`1px solid ${C.red}33`}}>
-                    删除
+                <div style={{display:"flex",gap:10,marginTop:10,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,color:C.muted}}>邀请码</span>
+                  <span style={{fontSize:15,fontWeight:900,color:C.sta,fontFamily:"monospace",
+                    padding:"3px 10px",borderRadius:6,background:C.sta+"15",letterSpacing:2}}>
+                    {cls.invite_code}
+                  </span>
+                  <button onClick={e=>{
+                    e.stopPropagation();
+                    navigator.clipboard?.writeText(cls.invite_code);
+                    setMsg("✅ 已复制邀请码");
+                    setTimeout(()=>setMsg(""),1500);
+                  }} style={{fontSize:12,background:"none",border:"none",color:C.alg,cursor:"pointer",fontWeight:800}}>
+                    复制
                   </button>
                 </div>
               </div>
-              <div style={{display:"flex",gap:12,marginTop:8,alignItems:"center"}}>
-                <span style={{fontSize:13,color:C.muted}}>邀请码：</span>
-                <span style={{fontSize:15,fontWeight:800,color:C.sta,fontFamily:"monospace",
-                  padding:"2px 10px",borderRadius:6,background:C.sta+"15",letterSpacing:2}}>
-                  {cls.invite_code}
-                </span>
-                <button onClick={e=>{
-                  e.stopPropagation();
-                  navigator.clipboard?.writeText(cls.invite_code);
-                  setMsg("✅ 已复制邀请码");
-                  setTimeout(()=>setMsg(""),1500);
-                }} style={{fontSize:12,background:"none",border:"none",color:C.alg,cursor:"pointer"}}>
-                  📋 复制
-                </button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
       {/* ── 学生学情 ── */}
       {tab==="students"&&!loading&&selectedClass&&(
-        <div>
-          {/* 班级概览 */}
-          {report?.stats&&(
-            <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(3,1fr)":"repeat(6,1fr)",
-              gap:8,marginBottom:16}}>
-              {[
-                {label:"学生",val:report.stats.total_students,color:C.alg},
-                {label:"平均掌握",val:report.stats.avg_mastered,color:C.geo},
-                {label:"最高",val:report.stats.max_mastered,color:C.ok},
-                {label:"最低",val:report.stats.min_mastered,color:C.red},
-                {label:"平均错题",val:report.stats.avg_wrong,color:C.sta},
-                {label:"平均打卡",val:report.stats.avg_checkin+"天",color:C.purple},
-              ].map((s,i)=>(
-                <div key={i} style={{padding:12,borderRadius:10,background:C.s1,
-                  border:`1px solid ${s.color}33`,textAlign:"center"}}>
-                  <div style={{fontSize:22,fontWeight:900,color:s.color}}>{s.val||0}</div>
-                  <div style={{fontSize:11,color:C.muted}}>{s.label}</div>
+        <div style={{display:"grid",gap:14}}>
+          {report?.tomorrowAdvice&&(
+            <>
+              <div style={panel(C.geo,{padding:isMobile?18:24})}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:16,alignItems:"flex-start",flexWrap:"wrap"}}>
+                  <div style={{maxWidth:760}}>
+                    <div style={{fontSize:12,color:C.geo,fontWeight:950,marginBottom:8}}>树脉 AI 明天课堂判断</div>
+                    <div style={{fontSize:isMobile?24:36,fontWeight:950,color:C.text,lineHeight:1.18,letterSpacing:0}}>
+                      {advice.focus||"明天先做 10 分钟共性错因讲评"}
+                    </div>
+                    <div style={{fontSize:14,color:C.muted,lineHeight:1.8,marginTop:12}}>
+                      为什么讲：{advice.reason||"当前班级数据不足时，先用基础高频题稳住课堂入口。"}
+                    </div>
+                  </div>
+                  <div style={{minWidth:170,padding:14,borderRadius:12,background:`${C.sta}14`,
+                    border:`1px solid ${C.sta}44`}}>
+                    <div style={smallLabel}>主动作</div>
+                    <button onClick={genPaper}
+                      style={{marginTop:8,width:"100%",padding:"10px 12px",borderRadius:9,cursor:"pointer",
+                        fontSize:13,fontWeight:950,background:C.sta,color:"#111",border:"none"}}>
+                      生成讲评小测
+                    </button>
+                    <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginTop:8}}>
+                      题量和难度可在“讲评小测”里调整。
+                    </div>
+                  </div>
                 </div>
-              ))}
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.08fr .92fr",gap:14}}>
+                <div style={panel(C.alg,{padding:16})}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div>
+                      <div style={{fontSize:12,color:C.alg,fontWeight:950}}>10 分钟讲评流程</div>
+                      <div style={{fontSize:18,fontWeight:950,color:C.text,marginTop:4}}>只讲一个共性入口</div>
+                    </div>
+                    <div style={{fontSize:12,color:C.muted}}>明天可直接照此执行</div>
+                  </div>
+                  <div style={{display:"grid",gap:10}}>
+                    {lessonPlan.map((line,i)=>(
+                      <div key={line} style={{display:"grid",gridTemplateColumns:"40px minmax(0,1fr)",gap:10,alignItems:"center",
+                        padding:12,borderRadius:10,background:i===1?`${C.geo}10`:C.s2,border:`1px solid ${i===1?C.geo+"3d":C.border}`}}>
+                        <div style={{width:30,height:30,borderRadius:8,display:"grid",placeItems:"center",
+                          fontWeight:950,color:C.bg,background:i===1?C.geo:C.alg}}>
+                          {i+1}
+                        </div>
+                        <div style={{fontSize:14,color:C.text,lineHeight:1.65,fontWeight:850}}>{line}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:13,color:C.muted,lineHeight:1.8,marginTop:10}}>
+                    {advice.teacherNote||"明天不要把问题讲散，先让学生带着一个清楚入口离开。"}
+                  </div>
+                </div>
+
+                <div style={panel(C.sta,{padding:16})}>
+                  <div style={{fontSize:12,color:C.sta,fontWeight:950,marginBottom:8}}>推荐讲评题</div>
+                  <div style={{display:"grid",gap:9}}>
+                    {reviewQuestions.length>0?(
+                      reviewQuestions.map((q,i)=>(
+                        <div key={q.questionId} style={quietCard({padding:12,borderColor:i===0?`${C.sta}55`:C.border})}>
+                          <div style={{fontSize:14,color:C.text,fontWeight:950}}>题目 {q.questionId}</div>
+                          <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginTop:4}}>
+                            {q.count} 次未清除 · 适合作为讲评样题
+                          </div>
+                        </div>
+                      ))
+                    ):(
+                      <div style={quietCard({padding:12})}>
+                        <div style={{fontSize:13,color:C.muted,lineHeight:1.8}}>暂无集中错题，建议选基础高频题。</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
+                <div style={panel(C.red,{padding:16})}>
+                  <div style={{fontSize:12,color:C.red,fontWeight:950,marginBottom:8}}>需要课后看一眼</div>
+                  <div style={{display:"grid",gap:8}}>
+                    {watchStudents.length>0?watchStudents.map(s=>(
+                      <div key={s.id} style={quietCard({padding:11,borderColor:`${C.red}33`})}>
+                        <div style={{fontSize:14,color:C.text,fontWeight:900}}>{s.nickname}</div>
+                        <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginTop:3}}>{s.reason}</div>
+                      </div>
+                    )):(
+                      <div style={quietCard({padding:12})}>
+                        <div style={{fontSize:13,color:C.muted,lineHeight:1.8}}>暂无明显预警学生。</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={panel(C.purple,{padding:16})}>
+                  <div style={{fontSize:12,color:C.purple,fontWeight:950,marginBottom:8}}>分层名单</div>
+                  <div style={{display:"grid",gap:8}}>
+                    {groupRows.map(g=>(
+                      <div key={g.label} style={quietCard({padding:11,borderColor:`${g.color}33`})}>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"baseline"}}>
+                          <div style={{fontSize:13,color:g.color,fontWeight:950}}>{g.label}</div>
+                          <div style={{fontSize:11,color:C.muted}}>{g.desc}</div>
+                        </div>
+                        <div style={{fontSize:13,color:C.text,lineHeight:1.7,marginTop:5}}>
+                          {(g.list||[]).length?(g.list||[]).join("、"):"—"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {!report?.tomorrowAdvice&&(
+            <div style={panel(C.geo,{padding:24,textAlign:"center"})}>
+              <div style={{fontSize:24,fontWeight:950,color:C.text,marginBottom:8}}>还没有足够的课堂建议数据</div>
+              <div style={{fontSize:14,color:C.muted,lineHeight:1.8}}>
+                学生加入班级并产生错题、掌握和打卡记录后，树脉会自动生成明天课堂建议。
+              </div>
             </div>
           )}
 
-          {/* AI 周报按钮 */}
-          <div style={{display:"flex",gap:8,marginBottom:14}}>
-            <button onClick={genAiReport}
-              style={{padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:700,
-                background:"linear-gradient(135deg,#3a9eff,#1ed9a0)",color:"white",border:"none"}}>
-              🤖 AI 生成周报
-            </button>
-            <button onClick={genPaper}
-              style={{padding:"8px 18px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:700,
-                background:"linear-gradient(135deg,#f5a623,#f04f70)",color:"white",border:"none"}}>
-              📄 智能出卷
-            </button>
-          </div>
+          {/* 班级概览 */}
+          {report?.stats&&(
+            <div style={panel(C.alg,{padding:16})}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
+                <div>
+                  <div style={{fontSize:12,color:C.alg,fontWeight:950}}>班级数据证据</div>
+                  <div style={{fontSize:18,fontWeight:950,color:C.text,marginTop:4}}>服务课堂判断，不做后台堆叠</div>
+                </div>
+                <button onClick={genAiReport}
+                  style={{padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:900,
+                    background:`${C.geo}18`,color:C.geo,border:`1px solid ${C.geo}44`}}>
+                  生成班级周报
+                </button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:10}}>
+                {classEvidence.map(s=>(
+                  <div key={s.label} style={quietCard({padding:12})}>
+                    <div style={smallLabel}>{s.label}</div>
+                    <div style={{fontSize:24,fontWeight:950,color:s.color,marginTop:6}}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* AI 周报展示 */}
           {aiReport&&(
-            <div style={{padding:16,borderRadius:12,background:C.s1,border:`1px solid ${C.alg}33`,marginBottom:14}}>
-              <div style={{fontWeight:700,color:C.alg,marginBottom:8}}>🤖 AI 班级周报</div>
+            <div style={panel(C.geo,{padding:16})}>
+              <div style={{fontWeight:950,color:C.geo,marginBottom:8}}>AI 班级周报</div>
               <div style={{fontSize:14,color:C.text,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{aiReport}</div>
             </div>
           )}
 
           {/* 学生表格 */}
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
-              <thead>
-                <tr style={{borderBottom:`2px solid ${C.border}`}}>
-                  {["姓名","掌握","错题","打卡","周活跃","操作"].map(h=>(
-                    <th key={h} style={{padding:"8px 10px",textAlign:"left",color:C.muted,
-                      fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {students.map(s=>(
-                  <tr key={s.id} style={{borderBottom:`1px solid ${C.border}`}}>
-                    <td style={{padding:"8px 10px",fontWeight:700,color:C.text}}>{s.nickname}</td>
-                    <td style={{padding:"8px 10px",color:C.ok,fontWeight:600}}>
-                      {s.mastered}
-                      <span style={{fontSize:11,color:C.dim}}>/194</span>
-                    </td>
-                    <td style={{padding:"8px 10px",color:parseInt(s.wrong_pending)>5?C.red:C.muted}}>
-                      {s.wrong_pending}
-                    </td>
-                    <td style={{padding:"8px 10px",color:C.sta}}>{s.checkin_days}天</td>
-                    <td style={{padding:"8px 10px"}}>
-                      <span style={{padding:"2px 8px",borderRadius:6,fontSize:12,fontWeight:600,
-                        background:parseInt(s.week_active)>=5?C.ok+"20":parseInt(s.week_active)>=2?C.sta+"20":C.red+"20",
-                        color:parseInt(s.week_active)>=5?C.ok:parseInt(s.week_active)>=2?C.sta:C.red}}>
-                        {s.week_active}天
-                      </span>
-                    </td>
-                    <td style={{padding:"8px 10px"}}>
-                      <button onClick={()=>removeStudent(s.id)}
-                        style={{padding:"3px 10px",borderRadius:6,cursor:"pointer",fontSize:12,
-                          background:C.s2,color:C.red,border:`1px solid ${C.red}33`}}>
-                        移除
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {students.length===0&&(
-              <div style={{textAlign:"center",padding:30,color:C.muted}}>
-                暂无学生，分享邀请码让学生加入
+          <div style={panel(C.border2,{padding:0,overflow:"hidden"})}>
+            <div style={{padding:14,borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:12,color:C.muted,fontWeight:850}}>学生明细</div>
+                <div style={{fontSize:17,fontWeight:950,color:C.text,marginTop:3}}>用于分层和课后跟进</div>
               </div>
-            )}
+              <button onClick={genPaper}
+                style={{padding:"8px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:900,
+                  background:`${C.sta}18`,color:C.sta,border:`1px solid ${C.sta}44`}}>
+                智能出卷
+              </button>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
+                <thead>
+                  <tr style={{borderBottom:`1px solid ${C.border}`,background:C.s2}}>
+                    {["姓名","掌握","错题","打卡","周活跃","操作"].map(h=>(
+                      <th key={h} style={{padding:"10px 12px",textAlign:"left",color:C.muted,
+                        fontWeight:850,whiteSpace:"nowrap"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map(s=>(
+                    <tr key={s.id} style={{borderBottom:`1px solid ${C.border}`}}>
+                      <td style={{padding:"10px 12px",fontWeight:900,color:C.text}}>{s.nickname}</td>
+                      <td style={{padding:"10px 12px",color:C.ok,fontWeight:800}}>
+                        {s.mastered}
+                        <span style={{fontSize:11,color:C.dim}}>/194</span>
+                      </td>
+                      <td style={{padding:"10px 12px",color:parseInt(s.wrong_pending)>5?C.red:C.muted,fontWeight:800}}>
+                        {s.wrong_pending}
+                      </td>
+                      <td style={{padding:"10px 12px",color:C.sta}}>{s.checkin_days}天</td>
+                      <td style={{padding:"10px 12px"}}>
+                        <span style={{padding:"2px 8px",borderRadius:6,fontSize:12,fontWeight:800,
+                          background:parseInt(s.week_active)>=5?C.ok+"20":parseInt(s.week_active)>=2?C.sta+"20":C.red+"20",
+                          color:parseInt(s.week_active)>=5?C.ok:parseInt(s.week_active)>=2?C.sta:C.red}}>
+                          {s.week_active}天
+                        </span>
+                      </td>
+                      <td style={{padding:"10px 12px"}}>
+                        <button onClick={()=>removeStudent(s.id)}
+                          style={{padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:12,
+                            background:C.s2,color:C.red,border:`1px solid ${C.red}33`}}>
+                          移除
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {students.length===0&&(
+                <div style={{textAlign:"center",padding:30,color:C.muted}}>
+                  暂无学生，分享邀请码让学生加入
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {/* ── 试卷生成 ── */}
       {tab==="paper"&&!loading&&(
-        <div>
-          <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-            <select value={paperDiff} onChange={e=>setPaperDiff(e.target.value)}
-              style={{padding:"8px 12px",borderRadius:8,fontSize:14,
-                background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
-              <option value="基础">基础</option>
-              <option value="中等">中等</option>
-              <option value="较难">较难</option>
-              <option value="压轴">压轴</option>
-            </select>
-            <select value={paperCount} onChange={e=>setPaperCount(parseInt(e.target.value))}
-              style={{padding:"8px 12px",borderRadius:8,fontSize:14,
-                background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
-              {[5,8,10,15,20,25].map(n=>(
-                <option key={n} value={n}>{n}题</option>
-              ))}
-            </select>
-            <button onClick={genPaper}
-              style={{padding:"8px 20px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:700,
-                background:"linear-gradient(135deg,#f5a623,#f04f70)",color:"white",border:"none"}}>
-              {loading?"⏳ 生成中...":"🔄 重新生成"}
-            </button>
-            {paper&&(
-              <button onClick={()=>{
-                navigator.clipboard?.writeText(paper);
-                setMsg("✅ 已复制试卷");setTimeout(()=>setMsg(""),1500);
-              }} style={{padding:"8px 16px",borderRadius:8,cursor:"pointer",fontSize:14,
-                background:C.s2,color:C.alg,border:`1px solid ${C.alg}33`}}>
-                📋 复制
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"320px minmax(0,1fr)",gap:16,alignItems:"start"}}>
+          <div style={panel(C.sta,{padding:16})}>
+            <div style={{fontSize:12,color:C.sta,fontWeight:950,marginBottom:6}}>讲评小测生成</div>
+            <div style={{fontSize:20,fontWeight:950,color:C.text,marginBottom:6}}>围绕班级薄弱点出题</div>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.7,marginBottom:14}}>
+              这不是随机组卷，而是把明天课堂建议落成一张可讲、可练、可复盘的小测。
+            </div>
+            <div style={{display:"grid",gap:8}}>
+              <select value={paperDiff} onChange={e=>setPaperDiff(e.target.value)}
+                style={{padding:"9px 12px",borderRadius:8,fontSize:14,
+                  background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+                <option value="基础">基础</option>
+                <option value="中等">中等</option>
+                <option value="较难">较难</option>
+                <option value="压轴">压轴</option>
+              </select>
+              <select value={paperCount} onChange={e=>setPaperCount(parseInt(e.target.value))}
+                style={{padding:"9px 12px",borderRadius:8,fontSize:14,
+                  background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+                {[5,8,10,15,20,25].map(n=>(
+                  <option key={n} value={n}>{n}题</option>
+                ))}
+              </select>
+              <button onClick={genPaper}
+                style={{padding:"10px 18px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:950,
+                  background:C.sta,color:"#111",border:"none"}}>
+                {loading?"生成中...":"生成小测"}
               </button>
-            )}
+              {paper&&(
+                <button onClick={()=>{
+                  navigator.clipboard?.writeText(paper);
+                  setMsg("✅ 已复制试卷");setTimeout(()=>setMsg(""),1500);
+                }} style={{padding:"9px 16px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:850,
+                  background:C.s2,color:C.alg,border:`1px solid ${C.alg}33`}}>
+                  复制试卷
+                </button>
+              )}
+            </div>
           </div>
+
           {paper?(
-            <div style={{padding:20,borderRadius:12,background:C.s1,border:`1px solid ${C.border}`,
-              fontSize:15,color:C.text,lineHeight:1.9,whiteSpace:"pre-wrap",fontFamily:"serif"}}>
+            <div style={panel(C.border2,{padding:20,
+              fontSize:15,color:C.text,lineHeight:1.9,whiteSpace:"pre-wrap",fontFamily:"serif"})}>
               {paper}
             </div>
           ):(
-            <div style={{textAlign:"center",padding:40,color:C.muted}}>
-              选择难度和题量后点击生成
+            <div style={panel(C.geo,{padding:40,textAlign:"center",color:C.muted})}>
+              选择难度和题量后点击生成。生成后可复制到文档或打印。
             </div>
           )}
         </div>
@@ -6790,6 +9046,7 @@ function PageAdmin({onNav}) {
   const [configs,setConfigs]=useState([]);
   const [users,setUsers]=useState([]);
   const [stats,setStats]=useState(null);
+  const [resources,setResources]=useState(null);
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
   // D6 题库状态
@@ -6813,11 +9070,13 @@ function PageAdmin({onNav}) {
   const loadConfigs=async()=>{setLoading(true);try{setConfigs(await api("GET","/config"));}catch(e){setMsg("❌ "+e.message);}setLoading(false);};
   const loadUsers=async()=>{setLoading(true);try{setUsers(await api("GET","/users"));}catch(e){setMsg("❌ "+e.message);}setLoading(false);};
   const loadStats=async()=>{setLoading(true);try{setStats(await api("GET","/stats"));}catch(e){setMsg("❌ "+e.message);}setLoading(false);};
+  const loadResources=async()=>{setLoading(true);try{setResources(await api("GET","/resources"));}catch(e){setMsg("❌ "+e.message);}setLoading(false);};
 
   useEffect(()=>{
     if(tab==="cron"||tab==="config") loadConfigs();
     else if(tab==="users") loadUsers();
     else if(tab==="stats") loadStats();
+    else if(tab==="resources") loadResources();
   },[tab]);
 
   // 更新配置
@@ -6856,6 +9115,7 @@ function PageAdmin({onNav}) {
     {id:"cron",label:"⏰ 定时任务",color:C.sta},
     {id:"users",label:"👥 用户管理",color:C.alg},
     {id:"stats",label:"📊 数据统计",color:C.geo},
+    {id:"resources",label:"💳 资源计费",color:C.red},
     {id:"questions",label:"📝 题库管理",color:"#22d3ee"},
     {id:"config",label:"⚙️ 系统配置",color:C.purple},
   ];
@@ -6990,6 +9250,11 @@ function PageAdmin({onNav}) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── 资源计费 ── */}
+      {tab==="resources"&&!loading&&resources&&(
+        <ResourceBillingPanel data={resources} onRefresh={loadResources} api={api}/>
       )}
 
       {/* ── D6 题库管理 ── */}
@@ -7241,6 +9506,195 @@ function CronEditor({cfg,val,onSave,onTrigger}) {
   );
 }
 
+function ResourceBillingPanel({data,onRefresh,api}) {
+  const [editing,setEditing]=useState(false);
+  const [form,setForm]=useState({
+    serverPlanName:data.server?.name||"",
+    serverRegion:data.server?.region||"",
+    serverExpiresAt:data.server?.expiresAt||"",
+    ttsFreeChars:data.tts?.quota?.freeChars||8000000,
+    ttsResourceExpiresAt:data.tts?.quota?.expiresAt||"",
+  });
+  const [saving,setSaving]=useState(false);
+  const [note,setNote]=useState("");
+  const fmtBytes=(n=0)=>{
+    if(n>=1024**3) return `${(n/1024**3).toFixed(1)}GB`;
+    if(n>=1024**2) return `${Math.round(n/1024**2)}MB`;
+    if(n>=1024) return `${Math.round(n/1024)}KB`;
+    return `${n}B`;
+  };
+  const pct=(used,total)=>total?Math.min(100,Math.round(used/total*100)):0;
+  const levelColor=(level)=>level==="danger"?C.red:level==="warn"?C.sta:C.ok;
+  const quotaUsed=pct(data.tts?.monthChars||0,data.tts?.quota?.freeChars||0);
+  const memUsed=pct((data.memory?.total||0)-(data.memory?.available||0),data.memory?.total||0);
+  const swapUsed=pct(data.memory?.swapUsed||0,data.memory?.swapTotal||0);
+  const diskUsed=data.disk?.percent||0;
+  const maxTrend=Math.max(1,...(data.tts?.trend||[]).map(d=>Number(d.chars)||0));
+
+  useEffect(()=>{
+    setForm({
+      serverPlanName:data.server?.name||"",
+      serverRegion:data.server?.region||"",
+      serverExpiresAt:data.server?.expiresAt||"",
+      ttsFreeChars:data.tts?.quota?.freeChars||8000000,
+      ttsResourceExpiresAt:data.tts?.quota?.expiresAt||"",
+    });
+  },[data]);
+
+  const saveConfig=async()=>{
+    setSaving(true);setNote("");
+    try{
+      await api("PUT","/resources/config",form);
+      setNote("已保存");
+      setEditing(false);
+      await onRefresh();
+      setTimeout(()=>setNote(""),1800);
+    }catch(e){setNote(e.message||"保存失败");}
+    setSaving(false);
+  };
+
+  const Meter=({value,color})=>(
+    <div style={{height:8,borderRadius:99,background:C.s2,overflow:"hidden",marginTop:8}}>
+      <div style={{width:`${Math.min(100,value)}%`,height:"100%",background:color,borderRadius:99}}/>
+    </div>
+  );
+
+  const Card=({title,value,sub,color,children})=>(
+    <div style={{padding:14,borderRadius:12,background:C.s1,border:`1px solid ${color}33`}}>
+      <div style={{fontSize:12,color:C.muted,marginBottom:6}}>{title}</div>
+      <div style={{fontSize:24,fontWeight:900,color}}>{value}</div>
+      {sub&&<div style={{fontSize:12,color:C.dim,marginTop:4}}>{sub}</div>}
+      {children}
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10}}>
+        <div style={{fontSize:14,color:C.muted}}>
+          最后刷新：{new Date(data.updatedAt).toLocaleString("zh-CN")}
+        </div>
+        <button onClick={onRefresh}
+          style={{padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700,
+            background:C.s2,color:C.text,border:`1px solid ${C.border}`}}>
+          刷新
+        </button>
+        <button onClick={()=>setEditing(v=>!v)}
+          style={{padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700,
+            background:C.alg+"22",color:C.alg,border:`1px solid ${C.alg}44`}}>
+          {editing?"取消设置":"提醒设置"}
+        </button>
+      </div>
+      {note&&<div style={{fontSize:13,color:note==="已保存"?C.ok:C.red,marginBottom:10}}>{note}</div>}
+
+      {editing&&(
+        <div style={{padding:14,borderRadius:12,background:C.s1,border:`1px solid ${C.alg}33`,marginBottom:14}}>
+          <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:10}}>资源提醒设置</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
+            {[
+              ["serverPlanName","服务器套餐","腾讯云轻量应用服务器 2核2G 50GB"],
+              ["serverRegion","服务器地区","中国香港"],
+              ["serverExpiresAt","服务器到期日","2026-08-05"],
+              ["ttsFreeChars","语音免费额度","8000000"],
+              ["ttsResourceExpiresAt","语音包到期日","2026-05-31"],
+            ].map(([key,label,placeholder])=>(
+              <label key={key} style={{display:"grid",gap:5}}>
+                <span style={{fontSize:12,color:C.muted}}>{label}</span>
+                <input value={form[key]??""} onChange={e=>setForm(f=>({...f,[key]:key==="ttsFreeChars"?Number(e.target.value||0):e.target.value}))}
+                  placeholder={placeholder}
+                  type={key.includes("ExpiresAt")?"date":key==="ttsFreeChars"?"number":"text"}
+                  style={{padding:"8px 10px",borderRadius:8,fontSize:13,
+                    background:C.s2,border:`1px solid ${C.border}`,color:C.text,outline:"none"}}/>
+              </label>
+            ))}
+          </div>
+          <button onClick={saveConfig} disabled={saving}
+            style={{marginTop:12,padding:"8px 20px",borderRadius:8,cursor:"pointer",fontSize:14,fontWeight:800,
+              background:C.alg,color:"white",border:"none",opacity:saving?0.65:1}}>
+            {saving?"保存中...":"保存设置"}
+          </button>
+        </div>
+      )}
+
+      {data.alerts?.length>0&&(
+        <div style={{display:"grid",gap:8,marginBottom:14}}>
+          {data.alerts.map((a,i)=>(
+            <div key={i} style={{padding:"10px 12px",borderRadius:10,
+              background:levelColor(a.level)+"18",border:`1px solid ${levelColor(a.level)}44`}}>
+              <div style={{fontSize:14,fontWeight:800,color:levelColor(a.level)}}>{a.title}</div>
+              <div style={{fontSize:13,color:C.muted,marginTop:2}}>{a.text}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:10,marginBottom:14}}>
+        <Card title="服务器套餐" value={data.server?.name||"轻量服务器"} color={C.alg}
+          sub={`${data.server?.region||""} · 到期 ${data.server?.expiresAt||"-"}`}/>
+        <Card title="服务器剩余" value={`${data.server?.daysLeft??"-"} 天`} color={(data.server?.daysLeft||99)<=14?C.red:C.geo}
+          sub="少于 14 天会红色提醒"/>
+        <Card title="后端服务" value={data.services?.api?.status==="online"?"正常":"异常"} color={data.services?.api?.status==="online"?C.ok:C.red}
+          sub={`内存 ${fmtBytes(data.services?.api?.memory||0)} · 重启 ${data.services?.api?.restarts||0} 次`}/>
+        <Card title="语音资源包" value={`${quotaUsed}%`} color={quotaUsed>=80?C.red:C.sta}
+          sub={`本月 ${Number(data.tts?.monthChars||0).toLocaleString()} / ${Number(data.tts?.quota?.freeChars||0).toLocaleString()} 字`}>
+          <Meter value={quotaUsed} color={quotaUsed>=80?C.red:C.sta}/>
+        </Card>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,marginBottom:14}}>
+        <Card title="内存使用" value={`${memUsed}%`} color={memUsed>=85?C.red:C.geo}
+          sub={`可用 ${fmtBytes(data.memory?.available||0)} / 总 ${fmtBytes(data.memory?.total||0)}`}>
+          <Meter value={memUsed} color={memUsed>=85?C.red:C.geo}/>
+        </Card>
+        <Card title="Swap 使用" value={`${swapUsed}%`} color={swapUsed>=50?C.red:C.sta}
+          sub={`${fmtBytes(data.memory?.swapUsed||0)} / ${fmtBytes(data.memory?.swapTotal||0)}`}>
+          <Meter value={swapUsed} color={swapUsed>=50?C.red:C.sta}/>
+        </Card>
+        <Card title="磁盘使用" value={`${diskUsed}%`} color={diskUsed>=80?C.red:C.purple}
+          sub={`剩余 ${fmtBytes(data.disk?.available||0)} / 总 ${fmtBytes(data.disk?.total||0)}`}>
+          <Meter value={diskUsed} color={diskUsed>=80?C.red:C.purple}/>
+        </Card>
+        <Card title="今日语音" value={`${data.tts?.todayCalls||0} 次`} color={C.alg}
+          sub={`${Number(data.tts?.todayChars||0).toLocaleString()} 字 · 缓存 ${data.tts?.todayCached||0} 次`}/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12}}>
+        <div style={{padding:14,borderRadius:12,background:C.s1,border:`1px solid ${C.border}`}}>
+          <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:10}}>近 14 天语音字符</div>
+          <div style={{display:"flex",alignItems:"end",gap:6,height:130}}>
+            {(data.tts?.trend||[]).map(d=>(
+              <div key={d.day} style={{flex:1,minWidth:18,display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+                <div title={`${d.day}：${d.chars} 字`} style={{width:"100%",minHeight:3,
+                  height:`${Math.max(3,(Number(d.chars)||0)/maxTrend*100)}%`,
+                  borderRadius:"6px 6px 2px 2px",background:C.alg}}/>
+                <div style={{fontSize:10,color:C.dim,whiteSpace:"nowrap"}}>{d.day}</div>
+              </div>
+            ))}
+            {(data.tts?.trend||[]).length===0&&(
+              <div style={{color:C.muted,fontSize:13,alignSelf:"center"}}>暂无语音用量记录</div>
+            )}
+          </div>
+        </div>
+
+        <div style={{padding:14,borderRadius:12,background:C.s1,border:`1px solid ${C.border}`}}>
+          <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:10}}>语音来源</div>
+          {(data.tts?.byProvider||[]).map(p=>(
+            <div key={p.provider} style={{display:"flex",justifyContent:"space-between",gap:10,
+              padding:"7px 0",borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontSize:13,color:C.muted}}>{p.provider}</span>
+              <span style={{fontSize:13,color:C.text,fontWeight:700}}>{Number(p.chars||0).toLocaleString()} 字</span>
+            </div>
+          ))}
+          <a href={data.tts?.quota?.consoleUrl||"https://console.cloud.tencent.com/tts/package"} target="_blank" rel="noreferrer"
+            style={{display:"inline-block",marginTop:12,fontSize:13,color:C.alg,textDecoration:"none",fontWeight:700}}>
+            打开腾讯云资源包
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 通用配置编辑器
 function ConfigEditor({cfg,val,onSave}) {
   const [jsonStr,setJsonStr]=useState(JSON.stringify(val,null,2));
@@ -7366,16 +9820,21 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
   const needsFigure=topicIds.some(t=>GEO_TOPIC_IDS.has(t))||GEO_KW.test(content);
   // ⚠️ 不能在 useEffect 之前 return（违反 React Hooks 规则），移到所有 Hook 之后
 
-  // 自动读取缓存
-  useEffect(()=>{
-    if(!needsFigure||!questionId||svg) return;
-    fetch(`${API}/api/svg/${encodeURIComponent(questionId)}`)
-      .then(r=>r.json())
-      .then(d=>{
-        if(d.exists&&d.svg){ setSvg(d.svg); setFromCache(true); }
-      })
-      .catch(()=>{});
-  },[questionId,needsFigure]);
+  const loadCachedSvg=async()=>{
+    if(!needsFigure||!questionId) return false;
+    try{
+      const r=await fetch(`${API}/api/svg/${encodeURIComponent(questionId)}`);
+      if(!r.ok) return false;
+      const d=await r.json();
+      if(d.exists&&d.svg){
+        setSvg(d.svg);
+        setFromCache(true);
+        setErr(false);
+        return true;
+      }
+    }catch{}
+    return false;
+  };
 
   const saveSvg=async(svgStr)=>{
     if(!questionId) return;
@@ -7393,6 +9852,9 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
   const generate=async()=>{
     setLoading(true);setErr(false);
     try{
+      const cached=await loadCachedSvg();
+      if(cached){ setLoading(false); return; }
+
       const sys=`你是数学几何示意图生成器。只输出SVG代码，从<svg开始到</svg>结束，不要任何其他文字。
 规则：
 - viewBox="0 0 300 220" width="100%" style="background:#0d1f35;border-radius:8px;display:block"
@@ -7413,16 +9875,7 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
     setLoading(false);
   };
 
-  // 如果有API Key且无缓存，自动触发生成
-  useEffect(()=>{
-    if(!needsFigure) return;
-    if(!svg && !loading && !err &&
-       (window.__SHUMAI_DSKEY || window.__SHUMAI_DBKEY)){
-      // 延迟500ms避免同时大量请求
-      const timer = setTimeout(()=>generate(), 500);
-      return ()=>clearTimeout(timer);
-    }
-  },[svg, loading, err, needsFigure]);
+  // 不自动展示缓存图；只有用户点击“AI生成示意图”时才读取缓存或生成。
 
   if(!needsFigure) return null; // 所有 Hook 已调用，可以安全提前返回
 
@@ -7439,7 +9892,7 @@ function GeoFigure({content, topicIds=[], questionId="", questionType="basic"}) 
             cursor:"pointer",padding:0,opacity:loading?0.5:1}}>
           {loading?"⏳ 重新生成中…":"🔄 重新生成"}
         </button>
-        <button onClick={()=>setSvg("")}
+        <button onClick={()=>{setSvg("");setFromCache(false);}}
           style={{fontSize:12,color:C.muted,background:"none",border:"none",cursor:"pointer",padding:0}}>
           隐藏图形
         </button>
@@ -7510,25 +9963,90 @@ function NicknameEditModal({current, onSave, onClose}) {
   );
 }
 
-function AuthModal({onClose, onLogin}) {
-  const [tab,setTab]=useState("login");
+function AuthModal({onClose, onLogin, initialTab="login"}) {
+  const normalizeAuthMode=(tab)=>{
+    if(tab==="register") return "register";
+    if(tab==="scan") return "scan";
+    if(tab==="sms") return "sms";
+    return "password";
+  };
+  const [mode,setMode]=useState(normalizeAuthMode(initialTab));
   const [phone,setPhone]=useState("");
+  const [code,setCode]=useState("");
   const [password,setPassword]=useState("");
+  const [confirmPwd,setConfirmPwd]=useState("");
   const [nickname,setNickname]=useState("");
+  const [inviteCode,setInviteCode]=useState("");
+  const [agreed,setAgreed]=useState(false);
   const [showPwd,setShowPwd]=useState(false);
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState("");
+  const [notice,setNotice]=useState("");
+  const isNarrowAuth=typeof window!=="undefined"&&window.innerWidth<520;
+
+  const authTheme={
+    bg:"#f7f8fb",
+    card:"#ffffff",
+    ink:"#121826",
+    muted:"#667085",
+    dim:"#98a2b3",
+    line:"#e4e7ec",
+    soft:"#f2f4f7",
+    primary:"#5b5ce2",
+    primary2:"#46b8a9",
+    danger:"#d92d20",
+  };
+  const titleMap={
+    scan:"扫码登录",
+    sms:"验证码登录",
+    password:"账号登录",
+    register:"注册账号",
+  };
+  const resetState=(nextMode)=>{
+    setMode(nextMode);
+    setErr("");
+    setNotice("");
+  };
+  const inputStyle={
+    width:"100%",
+    height:46,
+    padding:"0 14px",
+    borderRadius:10,
+    fontSize:15,
+    background:authTheme.card,
+    border:`1px solid ${authTheme.line}`,
+    color:authTheme.ink,
+    outline:"none",
+    boxSizing:"border-box",
+  };
+  const labelStyle={fontSize:13,fontWeight:750,color:authTheme.ink,marginBottom:7};
+  const required=<span style={{color:authTheme.danger,marginLeft:2}}>*</span>;
+  const canRegister=phone.trim()&&password.length>=8&&confirmPwd===password&&agreed;
+  const canPasswordLogin=phone.trim()&&password.trim();
+  const canSmsLogin=phone.trim()&&code.trim()&&agreed;
 
   const submit=async()=>{
     setErr("");
-    if(!phone.trim()||!password.trim()){setErr("手机号和密码必填");return;}
-    if(tab==="register"&&password.length<6){setErr("密码至少6位");return;}
+    setNotice("");
+    if(mode==="sms"){
+      setNotice("短信验证码登录正在接入中。现在可先用账号密码登录，或注册后绑定微信里的树脉学长。");
+      return;
+    }
+    if(mode==="register"){
+      if(!phone.trim()){setErr("请输入手机号码");return;}
+      if(password.length<8){setErr("密码至少 8 位字符");return;}
+      if(confirmPwd!==password){setErr("两次输入的密码不一致");return;}
+      if(!agreed){setErr("请先阅读并同意相关协议");return;}
+    }else{
+      if(!canPasswordLogin){setErr("手机号和密码必填");return;}
+    }
     setLoading(true);
     try{
-      const url=`${BACKEND_URL}/api/auth/${tab==="login"?"login":"register"}`;
-      const body=tab==="login"
-        ?{phone:phone.trim(),password}
-        :{phone:phone.trim(),password,nickname:nickname.trim()||"\u540c\u5b66"};
+      const isRegister=mode==="register";
+      const url=`${BACKEND_URL}/api/auth/${isRegister?"register":"login"}`;
+      const body=isRegister
+        ?{phone:phone.trim(),password,nickname:nickname.trim()||"\u540c\u5b66"}
+        :{phone:phone.trim(),password};
       const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
       if(!r.ok){setErr(d.error||"操作失败");setLoading(false);return;}
@@ -7538,90 +10056,217 @@ function AuthModal({onClose, onLogin}) {
     setLoading(false);
   };
 
+  const sendCode=()=>{
+    setErr("");
+    setNotice("短信验证码服务正在接入中。树脉会优先保证低打扰、安全和家长可理解的登录体验。");
+  };
+  const protocolLinkStyle={
+    border:"none",
+    background:"none",
+    padding:"0 2px",
+    color:authTheme.primary,
+    cursor:"pointer",
+    whiteSpace:"normal",
+    overflowWrap:"anywhere",
+  };
+  const ProtocolText=({compact=false})=>(
+    <span style={{fontSize:compact?12:13,color:authTheme.muted,lineHeight:1.7,overflowWrap:"anywhere",minWidth:0}}>
+      {compact?"登录即表示同意":"已阅读并同意"}
+      <button type="button" style={protocolLinkStyle}>《隐私政策》</button>
+      <button type="button" style={protocolLinkStyle}>《用户协议》</button>
+      <button type="button" style={protocolLinkStyle}>《监护人同意函》</button>
+    </span>
+  );
+  const CodeField=()=>(
+    <div>
+      <div style={labelStyle}>验证码{mode==="register"?null:required}</div>
+      <div style={{display:"grid",gridTemplateColumns:isNarrowAuth?"minmax(0,1fr)":"minmax(0,1fr) 112px",gap:10}}>
+        <input value={code} onChange={e=>setCode(e.target.value)}
+          placeholder="请输入验证码" inputMode="numeric" style={inputStyle}/>
+        <button type="button" onClick={sendCode}
+          style={{height:46,borderRadius:10,border:`1px solid ${authTheme.line}`,
+            background:authTheme.soft,color:authTheme.ink,fontSize:isNarrowAuth?13:14,fontWeight:800,cursor:"pointer"}}>
+          发送验证码
+        </button>
+      </div>
+    </div>
+  );
+  const PasswordField=({confirm=false})=>(
+    <div>
+      <div style={labelStyle}>{confirm?"确认密码":"密码"}{required}</div>
+      <div style={{position:"relative"}}>
+        <input value={confirm?confirmPwd:password}
+          onChange={e=>confirm?setConfirmPwd(e.target.value):setPassword(e.target.value)}
+          placeholder={confirm?"请再次输入密码":(mode==="register"?"至少 8 位字符":"请输入密码")}
+          type={showPwd?"text":"password"}
+          onKeyDown={e=>e.key==="Enter"&&submit()}
+          style={{...inputStyle,paddingRight:58}}/>
+        <button type="button" onClick={()=>setShowPwd(v=>!v)}
+          style={{position:"absolute",right:10,top:8,height:30,border:"none",background:"transparent",
+            color:authTheme.muted,fontSize:13,fontWeight:750,cursor:"pointer"}}>
+          {showPwd?"隐藏":"显示"}
+        </button>
+      </div>
+    </div>
+  );
+
   return(
     <>
       <div onClick={onClose}
-        style={{position:"fixed",inset:0,zIndex:299,background:"rgba(0,0,0,.65)"}}/>
+        style={{position:"fixed",inset:0,zIndex:299,background:"rgba(15,23,42,.52)",backdropFilter:"blur(10px)"}}/>
       <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",
-        zIndex:300,background:C.s1,border:`1px solid ${C.border}`,
-        borderRadius:18,padding:"28px 28px 22px",width:320,maxWidth:"92vw",
-        boxShadow:"0 16px 56px #000d"}}>
+        zIndex:300,width:isNarrowAuth?340:480,maxWidth:"calc(100vw - 28px)",maxHeight:"min(760px, calc(100vh - 28px))",
+        overflow:"auto",overflowX:"hidden",background:authTheme.bg,border:`1px solid ${authTheme.line}`,
+        borderRadius:22,boxShadow:"0 28px 90px rgba(15,23,42,.28)"}}>
 
-        <div style={{fontSize:20,fontWeight:900,color:C.text,marginBottom:20,textAlign:"center"}}>
-          ∑ 数脉
+        <div style={{padding:isNarrowAuth?"24px 22px 18px":"24px 28px 18px",background:authTheme.card,
+          borderBottom:`1px solid ${authTheme.line}`,position:"sticky",top:0,zIndex:1}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+            <button type="button" onClick={onClose}
+              style={{width:30,height:30,borderRadius:15,border:`1px solid ${authTheme.line}`,
+                background:authTheme.soft,color:authTheme.muted,cursor:"pointer",fontSize:18,lineHeight:1}}>
+              ×
+            </button>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:21,fontWeight:900,color:authTheme.ink,letterSpacing:0}}>
+                {titleMap[mode]}
+              </div>
+              <div style={{fontSize:12,color:authTheme.muted,marginTop:5}}>
+                树脉 AI 学习系统
+              </div>
+            </div>
+            <button type="button" onClick={()=>resetState(mode==="scan"?"password":"scan")}
+              style={{border:"none",background:"transparent",color:authTheme.primary,
+                fontSize:13,fontWeight:800,cursor:"pointer",whiteSpace:"nowrap"}}>
+              {mode==="scan"?"账号登录":"返回扫码"}
+            </button>
+          </div>
         </div>
 
-        {/* Tab 切换 */}
-        <div style={{display:"flex",gap:0,marginBottom:20,
-          background:C.s2,borderRadius:8,padding:3}}>
-          {[["login","登录"],["register","注册"]].map(([t,l])=>(
-            <button key={t} onClick={()=>{setTab(t);setErr("");}}
-              style={{flex:1,padding:"8px",borderRadius:6,cursor:"pointer",
-                fontSize:15,fontWeight:700,border:"none",
-                background:tab===t?C.alg:"transparent",
-                color:tab===t?"white":C.muted,transition:"all .18s"}}>
+        <div style={{padding:isNarrowAuth?"24px 22px 18px":"24px 28px 18px",minWidth:0,overflowX:"hidden"}}>
+          {mode==="scan"&&(
+            <div style={{textAlign:"center"}}>
+              <div style={{width:194,height:194,margin:"4px auto 18px",borderRadius:18,
+                background:`linear-gradient(135deg, ${authTheme.soft}, #fff)`,
+                border:`1px solid ${authTheme.line}`,display:"grid",placeItems:"center",
+                boxShadow:"inset 0 0 0 10px #fff"}}>
+                <div style={{width:138,height:138,display:"grid",gridTemplateColumns:"repeat(7, 1fr)",gap:4}}>
+                  {Array.from({length:49}).map((_,i)=>{
+                    const dark=[0,1,2,7,14,8,15,6,13,20,42,43,44,35,28,36,29,48,41,34,10,11,17,24,25,31,32,38,40].includes(i);
+                    return <span key={i} style={{borderRadius:3,background:dark?authTheme.ink:authTheme.line}}/>;
+                  })}
+                </div>
+              </div>
+              <div style={{fontSize:17,fontWeight:900,color:authTheme.ink,marginBottom:8}}>使用微信扫码登录</div>
+              <div style={{fontSize:14,color:authTheme.muted,lineHeight:1.8,marginBottom:12,overflowWrap:"anywhere"}}>
+                网页微信扫码登录正在接入。当前可在微信中添加“树脉学长”，发送“绑定 手机号”，让 AI 教练把计划、提醒和错题修复送到微信里。
+              </div>
+              <div style={{padding:"12px 14px",borderRadius:12,background:"#ecfdf3",
+                color:"#027a48",fontSize:13,lineHeight:1.7,textAlign:"left",border:"1px solid #abefc6",overflowWrap:"anywhere"}}>
+                已确认的主路径：ClawBot 私聊绑定。扫码登录会作为后续账户能力接入，不影响现在的注册与学习数据保存。
+              </div>
+              <div style={{marginTop:14}}><ProtocolText compact/></div>
+            </div>
+          )}
+
+          {mode==="sms"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:15}}>
+              <div>
+                <div style={labelStyle}>手机号码{required}</div>
+                <input value={phone} onChange={e=>setPhone(e.target.value)}
+                  placeholder="请输入手机号码" type="tel" inputMode="numeric" style={inputStyle}/>
+              </div>
+              <CodeField/>
+              <label style={{display:"flex",gap:9,alignItems:"flex-start",cursor:"pointer"}}>
+                <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)}
+                  style={{marginTop:4,accentColor:authTheme.primary}}/>
+                <ProtocolText/>
+              </label>
+              <button onClick={submit} disabled={!canSmsLogin}
+                style={{height:48,borderRadius:12,border:"none",fontSize:16,fontWeight:900,
+                  color:"white",background:canSmsLogin?authTheme.primary:authTheme.line,
+                  cursor:canSmsLogin?"pointer":"not-allowed"}}>
+                验证码登录
+              </button>
+            </div>
+          )}
+
+          {mode==="password"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:15}}>
+              <div>
+                <div style={labelStyle}>手机号码{required}</div>
+                <input value={phone} onChange={e=>setPhone(e.target.value)}
+                  placeholder="请输入手机号码" type="tel" inputMode="numeric" style={inputStyle}/>
+              </div>
+              <PasswordField/>
+              <button onClick={submit} disabled={loading||!canPasswordLogin}
+                style={{height:48,borderRadius:12,border:"none",fontSize:16,fontWeight:900,
+                  color:"white",background:canPasswordLogin&&!loading?authTheme.primary:authTheme.line,
+                  cursor:canPasswordLogin&&!loading?"pointer":"not-allowed"}}>
+                {loading?"登录中...":"账号登录"}
+              </button>
+              <div style={{fontSize:13,color:authTheme.muted,textAlign:"center"}}>
+                第一次使用？可以直接注册账号，后续保存学习树、错因修复和反向规划。
+              </div>
+            </div>
+          )}
+
+          {mode==="register"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div>
+                <div style={labelStyle}>手机号码{required}</div>
+                <input value={phone} onChange={e=>setPhone(e.target.value)}
+                  placeholder="请输入手机号码" type="tel" inputMode="numeric" style={inputStyle}/>
+              </div>
+              <CodeField/>
+              <PasswordField/>
+              <PasswordField confirm/>
+              <div>
+                <div style={labelStyle}>昵称</div>
+                <input value={nickname} onChange={e=>setNickname(e.target.value)}
+                  placeholder="学生昵称，选填" style={inputStyle}/>
+              </div>
+              <div>
+                <div style={labelStyle}>邀请码</div>
+                <input value={inviteCode} onChange={e=>setInviteCode(e.target.value)}
+                  placeholder="邀请码，选填" style={inputStyle}/>
+              </div>
+              <label style={{display:"flex",gap:9,alignItems:"flex-start",cursor:"pointer"}}>
+                <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)}
+                  style={{marginTop:4,accentColor:authTheme.primary}}/>
+                <ProtocolText/>
+              </label>
+              <button onClick={submit} disabled={loading||!canRegister}
+                style={{height:48,borderRadius:12,border:"none",fontSize:16,fontWeight:900,
+                  color:"white",background:canRegister&&!loading?authTheme.primary:authTheme.line,
+                  cursor:canRegister&&!loading?"pointer":"not-allowed"}}>
+                {loading?"注册中...":"注册"}
+              </button>
+            </div>
+          )}
+
+          {(err||notice)&&(
+            <div style={{marginTop:14,padding:"10px 12px",borderRadius:10,
+              background:err?"#fef3f2":"#eef4ff",
+              color:err?authTheme.danger:"#3538cd",fontSize:13,lineHeight:1.65,
+              border:`1px solid ${err?"#fecdca":"#c7d7fe"}`}}>
+              {err||notice}
+            </div>
+          )}
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3, minmax(0, 1fr))",
+          position:"sticky",bottom:0,zIndex:2,
+          borderTop:`1px solid ${authTheme.line}`,background:authTheme.card}}>
+          {[["sms","验证码登录"],["password","账号登录"],["register","注册账号"]].map(([m,l])=>(
+            <button key={m} onClick={()=>resetState(m)}
+              style={{height:54,border:"none",borderRight:m==="register"?"none":`1px solid ${authTheme.line}`,
+                background:mode===m?"#f4f3ff":"transparent",color:mode===m?authTheme.primary:authTheme.muted,
+                fontSize:isNarrowAuth?12:13,fontWeight:900,cursor:"pointer",whiteSpace:"normal",overflowWrap:"anywhere",padding:"0 4px"}}>
               {l}
             </button>
           ))}
         </div>
-
-        {/* 表单 */}
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <input value={phone} onChange={e=>setPhone(e.target.value)}
-            placeholder="手机号" type="tel" inputMode="numeric"
-            style={{padding:"11px 14px",borderRadius:8,fontSize:15,
-              background:C.s2,border:`1px solid ${C.border}`,
-              color:C.text,outline:"none"}}/>
-          <div style={{position:"relative",display:"flex",alignItems:"center"}}>
-            <input value={password} onChange={e=>setPassword(e.target.value)}
-              placeholder={tab==="register"?"密码（至少6位）":"密码"}
-              type={showPwd?"text":"password"}
-              onKeyDown={e=>e.key==="Enter"&&submit()}
-              style={{width:"100%",padding:"11px 44px 11px 14px",borderRadius:8,fontSize:15,
-                background:C.s2,border:`1px solid ${C.border}`,
-                color:C.text,outline:"none"}}/>
-            <button onClick={()=>setShowPwd(v=>!v)} type="button"
-              style={{position:"absolute",right:10,background:"none",border:"none",
-                cursor:"pointer",fontSize:16,color:C.muted,padding:4,lineHeight:1}}>
-              {showPwd?"🙈":"👁"}
-            </button>
-          </div>
-          {tab==="register"&&(
-            <input value={nickname} onChange={e=>setNickname(e.target.value)}
-              placeholder="昵称（选填）"
-              style={{padding:"11px 14px",borderRadius:8,fontSize:15,
-                background:C.s2,border:`1px solid ${C.border}`,
-                color:C.text,outline:"none"}}/>
-          )}
-        </div>
-
-        {err&&(
-          <div style={{marginTop:10,padding:"8px 12px",borderRadius:7,
-            background:C.red+"18",color:C.red,fontSize:13,textAlign:"center"}}>
-            {err}
-          </div>
-        )}
-
-        <button onClick={submit} disabled={loading}
-          style={{width:"100%",marginTop:16,padding:"13px",borderRadius:10,
-            cursor:"pointer",fontSize:16,fontWeight:800,border:"none",
-            background:loading?C.border:C.alg,color:"white",
-            opacity:loading?0.7:1,transition:"all .2s"}}>
-          {loading?"请稍候…":(tab==="login"?"登录":"注册")}
-        </button>
-
-        <button onClick={onClose}
-          style={{width:"100%",marginTop:8,padding:"9px",borderRadius:8,
-            cursor:"pointer",fontSize:14,background:"none",
-            color:C.muted,border:`1px solid ${C.border}`}}>
-          取消
-        </button>
-
-        {tab==="register"&&(
-          <div style={{marginTop:12,fontSize:12,color:C.dim,textAlign:"center",lineHeight:1.6}}>
-            注册即同意服务条款
-          </div>
-        )}
       </div>
     </>
   );
@@ -7630,7 +10275,7 @@ function AuthModal({onClose, onLogin}) {
 /* ════════════════════════════════════════════════════════════
    🤖 AI 讲解卡片组件 — "问学长"按钮点击后展开
 ════════════════════════════════════════════════════════════ */
-function AskTutor({q, topicName, mode="explain"}) {
+function AskTutor({q, topicName, mode="explain", label="问学长"}) {
   const [open,setOpen]=useState(false);
   const [text,setText]=useState("");
   const [loading,setLoading]=useState(false);
@@ -7641,41 +10286,31 @@ function AskTutor({q, topicName, mode="explain"}) {
   const recRef=useRef(null);
 
   const startVoice=()=>{
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){setVoiceErr("浏览器不支持语音输入，请手动输入文字");return;}
-    try{recRef.current?.abort();}catch{}
-    recRef.current=null;
+    try{recRef.current?.stop?.();recRef.current?.abort?.();}catch{}
     setVoiceErr("");
-    const r=new SR();
-    r.lang="zh-CN";r.continuous=false;r.interimResults=true;
-    r.onresult=e=>{
-      const seg=e.results[e.results.length-1];
-      const t=seg?.[0]?.transcript||"";
-      if(t.trim()) setFollowUp(t.trim());
-    };
-    r.onerror=e=>{
-      setMicOn(false);recRef.current=null;
-      if(e.error==="not-allowed") setVoiceErr("请在浏览器设置中允许麦克风权限");
-      else if(e.error==="no-speech") setVoiceErr("未检测到语音，请重试");
-      else setVoiceErr("语音识别失败，请手动输入");
-    };
-    r.onend=()=>{setMicOn(false);recRef.current=null;};
-    try{r.start();recRef.current=r;setMicOn(true);}
-    catch{setVoiceErr("启动语音失败，请刷新重试");}
+    setFollowUp("");
+    const rec=startRecorder({
+      onText:t=>setFollowUp(t),
+      onError:setVoiceErr,
+      onState:setMicOn,
+    });
+    recRef.current=rec;
   };
   const stopVoice=()=>{try{recRef.current?.stop();}catch{} recRef.current=null;setMicOn(false);};
 
   const doAsk = async (userMsg) => {
     setLoading(true);
     try {
-      const system = mode==="wrong"
-        ? `你是数脉学长，帮学生分析错题。知识点：${topicName}。题目：${q.content}。答案：${q.answer}。错因：${q.error||'未知'}。用①②③分步讲解，150字以内，不用LaTeX。`
-        : mode==="topic"
-        ? `你是数脉学长，总结知识点"${topicName}"。要求：核心公式+高频考法+易错点+口诀，150字以内，不用LaTeX。`
-        : `你是数脉学长，讲解这道题。知识点：${topicName}。题目：${q.content}。答案：${q.answer}。解法：${q.sol||'无'}。错因：${q.error||'无'}。用①②③分步讲解，点出易错点，给记忆技巧，150字以内，不用LaTeX。`;
-      const result = await callAI(system, userMsg || "请讲解", history);
+      const askText=userMsg || "请讲解这道题，重点讲清楚题眼、思路入口和易错点";
+      const result = await askTutorAI({
+        question:q,
+        topicName,
+        mode,
+        userMsg:askText,
+        history,
+      });
       setText(result);
-      setHistory(prev=>[...prev,{r:"user",t:userMsg||"请讲解"},{r:"ai",t:result}]);
+      setHistory(prev=>[...prev,{r:"user",t:askText},{r:"ai",t:result}]);
     } catch(e) { setText("⚠️ AI暂时不在线，请稍后重试"); }
     setLoading(false);
   };
@@ -7702,7 +10337,7 @@ function AskTutor({q, topicName, mode="explain"}) {
           color:open?"white":"#a78bfa",
           border:`2px solid #a78bfa`,
           transition:"all .2s"}}>
-        {loading?"⏳ 思考中…":open?"✕ 收起":"🤖 问学长"}
+        {loading?"⏳ 思考中…":open?"✕ 收起":`🤖 ${label}`}
       </button>
       {open&&(
         <div style={{marginTop:8,padding:"12px 16px",
@@ -7760,6 +10395,45 @@ function AskTutor({q, topicName, mode="explain"}) {
   );
 }
 
+const QUESTION_VIDEO_LINKS = {};
+
+/* ════════════════════════════════════════════════════════════
+   🎬 视频讲解按钮 — 预留 B 站/外部视频链接入口
+════════════════════════════════════════════════════════════ */
+function VideoExplainButton({questionId, title="视频讲解"}) {
+  const [missing,setMissing]=useState(false);
+  const videoUrl=QUESTION_VIDEO_LINKS[questionId]||"";
+
+  const handleOpen=()=>{
+    setMissing(false);
+    if(videoUrl){
+      window.open(videoUrl,"_blank","noopener,noreferrer");
+    }else{
+      setMissing(true);
+    }
+  };
+
+  return(
+    <>
+      <button onClick={handleOpen}
+        style={{display:"inline-flex",alignItems:"center",gap:6,
+          padding:"6px 16px",borderRadius:20,cursor:"pointer",
+          fontSize:15,fontWeight:700,
+          background:C.s2,
+          color:C.gold,
+          border:`2px solid ${C.gold}`,
+          transition:"all .2s"}}>
+        {"🎬 "+title}
+      </button>
+      {missing&&(
+        <span style={{fontSize:13,color:C.muted}}>
+          视频讲解暂未上线，后续会接入对应 B 站链接
+        </span>
+      )}
+    </>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════
    🤖 全局 AI 浮窗 — 页面右下角常驻 "问学长" 气泡
 ════════════════════════════════════════════════════════════ */
@@ -7775,27 +10449,15 @@ function AIFloat({context}) {
   const {isMobile}=useBP();
 
   const startVoice=()=>{
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){setVoiceErr("浏览器不支持语音输入，请手动输入");return;}
-    try{recRef.current?.abort();}catch{}
-    recRef.current=null;
+    try{recRef.current?.stop?.();recRef.current?.abort?.();}catch{}
     setVoiceErr("");
-    const r=new SR();
-    r.lang="zh-CN";r.continuous=false;r.interimResults=true;
-    r.onresult=e=>{
-      const seg=e.results[e.results.length-1];
-      const t=seg?.[0]?.transcript||"";
-      if(t.trim()) setInput(t.trim());
-    };
-    r.onerror=e=>{
-      setMicOn(false);recRef.current=null;
-      if(e.error==="not-allowed") setVoiceErr("请允许麦克风权限");
-      else if(e.error==="no-speech") setVoiceErr("未检测到语音，请重试");
-      else setVoiceErr("语音识别失败，请手动输入");
-    };
-    r.onend=()=>{setMicOn(false);recRef.current=null;};
-    try{r.start();recRef.current=r;setMicOn(true);}
-    catch{setVoiceErr("启动语音失败，请刷新重试");}
+    setInput("");
+    const rec=startRecorder({
+      onText:t=>setInput(t),
+      onError:setVoiceErr,
+      onState:setMicOn,
+    });
+    recRef.current=rec;
   };
   const stopVoice=()=>{try{recRef.current?.stop();}catch{} recRef.current=null;setMicOn(false);};
 
@@ -7815,7 +10477,7 @@ function AIFloat({context}) {
         : context?.questionContent
         ? `学生当前正在看这道题：${context.questionContent}`
         : "";
-      const system = `你是数脉学长，正在通过H5页面和学生聊天。${ctxHint}
+      const system = `你是树脉学长，正在通过H5页面和学生聊天。${ctxHint}
 回答中考数学相关问题，用①②③分步讲解，150字以内，口语化，不用LaTeX和Markdown。
 如果学生问非数学问题，简短回应后温柔引导回数学。`;
       const hist = msgs.slice(-10);
@@ -7843,8 +10505,9 @@ function AIFloat({context}) {
 
   return (
     <div style={{position:"fixed",
-      bottom:isMobile?0:30,right:isMobile?0:30,
-      width:isMobile?"100vw":380,
+      bottom:isMobile?0:30,right:isMobile?0:30,left:isMobile?0:"auto",
+      width:isMobile?"auto":380,
+      maxWidth:isMobile?"100vw":380,
       height:isMobile?"85vh":500,
       zIndex:9999,borderRadius:isMobile?"16px 16px 0 0":16,
       background:C.s1,border:`1px solid ${C.border}`,
@@ -7855,7 +10518,7 @@ function AIFloat({context}) {
         alignItems:"center",background:C.s2,borderBottom:`1px solid ${C.border}`}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:20}}>🤖</span>
-          <span style={{fontWeight:800,fontSize:16,color:C.text}}>数脉学长</span>
+          <span style={{fontWeight:800,fontSize:16,color:C.text}}>树脉学长</span>
           <span style={{fontSize:11,color:"#a78bfa",padding:"2px 8px",
             background:"#a78bfa1a",borderRadius:10}}>AI学伴</span>
         </div>
@@ -7949,7 +10612,6 @@ export default function App() {
     const params=new URLSearchParams(window.location.search);
     const p=params.get("view");
     if(p){
-      history.replaceState(null,"",window.location.pathname);
       return p; // URL 参数允许所有 view（含 admin），但 URL 会被立即清除，刷新不还原
     }
     try{
@@ -8016,7 +10678,7 @@ export default function App() {
   useEffect(()=>{ saveStorage({aiModel,dsKey,dbKey}); },[aiModel,dsKey,dbKey]);
 
   // ── 主题系统 ──────────────────────────────────────────────
-  const [themeId,setThemeId]=useState(_saved.themeId||"dark");
+  const [themeId,setThemeId]=useState("light");
   const [forceKey,setForceKey]=useState(0); // 切换主题时强制全量重渲染
   const [showSettings,setShowSettings]=useState(false);
 
@@ -8030,6 +10692,7 @@ export default function App() {
     return t;
   });
   const [showAuth,setShowAuth]=useState(false);
+  const [authInitialTab,setAuthInitialTab]=useState("login");
   const [editingNickname,setEditingNickname]=useState(false);
   const authTokenRef=useRef(authToken);
   useEffect(()=>{authTokenRef.current=authToken;},[authToken]);
@@ -8099,6 +10762,38 @@ export default function App() {
     setForceKey(k=>k+1);
     saveStorage({themeId:id});
   };
+  const openAuth=(tab="login")=>{
+    setAuthInitialTab(["register","scan","sms"].includes(tab)?tab:"login");
+    setShowAuth(true);
+  };
+
+  // QA deep links: ?auth=register|scan|sms|login and ?theme=dark|light|green|sepia
+  useEffect(()=>{
+    try{
+      const url=new URL(window.location.href);
+      const qaView=url.searchParams.get("view");
+      const qaTheme=url.searchParams.get("theme");
+      const qaAuth=url.searchParams.get("auth");
+      let changed=false;
+      if(qaView){
+        url.searchParams.delete("view");
+        changed=true;
+      }
+      if(qaTheme&&THEMES[qaTheme]){
+        applyTheme(qaTheme);
+        url.searchParams.delete("theme");
+        changed=true;
+      }
+      if(qaAuth){
+        openAuth(qaAuth);
+        url.searchParams.delete("auth");
+        changed=true;
+      }
+      if(changed){
+        window.history.replaceState(null,"",`${url.pathname}${url.search}${url.hash}`);
+      }
+    }catch{}
+  },[]);
 
   // 清空所有学习记录（保留 API Key）
   const clearAllProgress = () => {
@@ -8181,6 +10876,9 @@ export default function App() {
   },[]);
 
   const activeNav=view==="detail"?"modules":view;
+  const isPortalShell = PORTAL_SHELL_VIEWS.has(view);
+  const isPortalHome = view === "home";
+  const headerNav = isPortalShell ? PORTAL_NAV : NAV;
 
   // ── 诊断测试视图 ──────────────────────
   if(view==="quickdiag") return(
@@ -8195,6 +10893,7 @@ export default function App() {
   return(
     <BPCtx.Provider value={bp}>
     <div key={forceKey} style={{minHeight:"100vh",background:C.bg,color:C.text,
+      width:"100%",maxWidth:"100vw",overflowX:"hidden",
       fontFamily:"'PingFang SC','Noto Sans SC','Microsoft YaHei',sans-serif"}}>
       <style>{`
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -8204,8 +10903,10 @@ export default function App() {
         input::placeholder{color:${C.muted}}
         button,select,input{font-family:inherit}
         select option{background:${C.s2};color:${C.text}}
-        html,body{max-width:100vw;overflow-x:hidden}
+        html,body,#root{width:100%;max-width:100vw;overflow-x:hidden}
+        body{background:${C.bg}}
         nav::-webkit-scrollbar{display:none}
+        aside::-webkit-scrollbar{width:0;height:0}
         @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.15)}}
       `}</style>
 
@@ -8230,15 +10931,14 @@ export default function App() {
           alignItems:"center",gap:bp.isMobile?4:7,whiteSpace:"nowrap",cursor:"pointer",flexShrink:0}}
           onClick={()=>setView("home")}>
           <span style={{color:C.alg,fontSize:bp.isMobile?20:24,fontWeight:900}}>∑</span>
-          <span>数脉</span>
+          <span>树脉</span>
           {!bp.isMobile&&<span style={{fontSize:14,color:C.muted,fontWeight:400}}>ShuMai</span>}
         </div>
         {!bp.isMobile&&<div style={{width:1,height:22,background:C.border,flexShrink:0}}/>}
 
-        <nav style={{display:"flex",gap:2,overflowX:"auto",flex:1,scrollbarWidth:"none",
-          ...(bp.isMobile?{display:"none"}:{})}}>
-          {NAV.map(n=>(
-            <button key={n.id} onClick={()=>navigate(n.id)}
+        <nav style={{display:bp.isMobile?"none":"flex",gap:2,overflowX:"auto",flex:1,scrollbarWidth:"none"}}>
+          {headerNav.map((n,i)=>(
+            <button key={`${n.id}-${n.label}-${i}`} onClick={()=>navigate(n.to||n.id)}
               style={{padding:bp.isMobile?"6px 8px":"5px 10px",borderRadius:6,
                 fontSize:bp.isMobile?20:15,cursor:"pointer",
                 border:"none",whiteSpace:"nowrap",flexShrink:0,
@@ -8254,10 +10954,11 @@ export default function App() {
             </button>
           ))}
         </nav>
+        {bp.isMobile&&<div style={{flex:1}}/>}
 
         {/* Right controls — responsive */}
         <div style={{display:"flex",alignItems:"center",gap:bp.isMobile?4:8,flexShrink:0}}>
-          {!bp.isMobile&&<>
+          {!bp.isMobile&&!isPortalShell&&<>
             <span style={{fontSize:15,color:C.muted}}>{mastered.size}/{TOPICS.length}</span>
             <div style={{width:56}}><Bar v={Math.round(mastered.size/TOPICS.length*100)} color={C.ok} h={5}/></div>
             {/* 清空记录按钮 */}
@@ -8288,7 +10989,7 @@ export default function App() {
           </>}
 
           {/* AI 模型 + Key */}
-          <div style={{display:"flex",alignItems:"center",gap:4}}>
+          {!isPortalShell&&<div style={{display:"flex",alignItems:"center",gap:4}}>
             {!bp.isMobile&&(
               <select value={aiModel} onChange={e=>{setAiModel(e.target.value);setShowKeyInput(false);}}
                 style={{padding:"3px 8px",borderRadius:6,fontSize:14,background:C.s2,
@@ -8331,7 +11032,49 @@ export default function App() {
                 </button>
               )
             )}
-          </div>
+          </div>}
+
+          {!bp.isMobile&&(
+            <div style={{display:"flex",alignItems:"center",padding:2,borderRadius:10,
+              background:C.s2,border:`1px solid ${C.border}`}}>
+              {[
+                ["light","浅"],
+                ["dark","深"],
+              ].map(([id,label])=>(
+                <button key={id} onClick={()=>applyTheme(id)}
+                  style={{minHeight:30,padding:"5px 10px",borderRadius:8,cursor:"pointer",
+                    border:"none",fontSize:13,fontWeight:850,
+                    background:themeId===id?C.s1:"transparent",
+                    color:themeId===id?C.alg:C.muted}}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!authUser&&isPortalShell&&(
+            <div style={{display:"flex",alignItems:"center",gap:bp.isMobile?4:8,minWidth:0}}>
+              <button onClick={()=>openAuth("login")}
+                style={{minHeight:34,padding:"6px 10px",borderRadius:8,cursor:"pointer",
+                  border:"none",background:"transparent",color:C.text,fontSize:14,fontWeight:850,
+                  display:bp.isMobile?"none":"inline-flex"}}>
+                登录
+              </button>
+              <button onClick={()=>openAuth("register")}
+                style={{minHeight:bp.isMobile?34:36,padding:bp.isMobile?"6px 10px":"7px 16px",borderRadius:8,cursor:"pointer",
+                  border:"none",background:C.purple,color:"white",fontSize:14,fontWeight:950}}>
+                {bp.isMobile?"登录":"注册"}
+              </button>
+            </div>
+          )}
+
+          {authUser&&isPortalShell&&(
+            <button onClick={()=>navigate("me")}
+              style={{minHeight:34,padding:"6px 12px",borderRadius:9,cursor:"pointer",
+                border:`1px solid ${C.border}`,background:C.s2,color:C.text,fontSize:14,fontWeight:850}}>
+              {authUser.nickname || "我的账户"}
+            </button>
+          )}
 
           {/* 设置按钮 */}
           <button onClick={()=>setShowSettings(o=>!o)}
@@ -8406,7 +11149,7 @@ export default function App() {
                   </button>
                 </div>
               ):(
-                <button onClick={()=>{setShowAuth(true);setShowSettings(false);}}
+                <button onClick={()=>{openAuth("login");setShowSettings(false);}}
                   style={{width:"100%",padding:"9px 14px",borderRadius:8,cursor:"pointer",
                     fontSize:14,background:C.alg,color:"white",
                     border:"none",fontWeight:700,textAlign:"center"}}>
@@ -8446,6 +11189,7 @@ export default function App() {
       {/* 登录注册弹窗 */}
       {showAuth&&(
         <AuthModal
+          initialTab={authInitialTab}
           onClose={()=>setShowAuth(false)}
           onLogin={(user,token)=>{handleLogin(user,token);}}
         />
@@ -8460,7 +11204,7 @@ export default function App() {
       )}
 
       {/* BODY */}
-      <div style={{display:"flex",height:"calc(100vh - 52px)",position:"relative",overflow:"hidden"}}>
+      <div style={{display:"flex",height:"calc(100vh - 52px)",position:"relative",overflow:"hidden",width:"100%",maxWidth:"100vw",minWidth:0}}>
         {/* Tablet backdrop */}
         {bp.isTablet&&sidebarOpen&&(
           <div onClick={()=>setSidebarOpen(false)}
@@ -8472,6 +11216,7 @@ export default function App() {
           width: bp.isTablet ? (sidebarOpen ? 240 : 44) : 240,
           background:C.s1,borderRight:`1px solid ${C.border}`,
           flexShrink:0,overflowY:"auto",paddingTop:8,
+          scrollbarWidth:"none",msOverflowStyle:"none",
           transition:"width .22s ease",
           ...(bp.isTablet ? {
             position:"fixed",top:52,left:0,bottom:0,zIndex:100,
@@ -8481,21 +11226,25 @@ export default function App() {
           onMouseEnter={()=>bp.isTablet&&setSidebarOpen(true)}
           onMouseLeave={()=>bp.isTablet&&setSidebarOpen(false)}
         >
-          {bp.isTablet ? (
+          {isPortalShell ? (
+            <PortalSidebar navigate={navigate} authUser={authUser} onOpenAuth={()=>openAuth("login")}/>
+          ) : bp.isTablet ? (
             /* ── TABLET: 图标侧边栏 ── */
             <div style={{width:240,paddingTop:4}}>
               {/* 图标导航项 */}
               {[
-                {icon:"⊡", label:"首页",     v:"home",    badge:0,            color:C.alg},
-                {icon:"▦", label:"四模块",   v:"modules", badge:0,            color:C.geo},
-                {icon:"✎", label:"真题刷题", v:"practice",badge:0,            color:C.sta},
-                {icon:"📋",label:"错题本",   v:"wrong",   badge:wrongSet.size+basicWrongSet.size, color:C.red},
-                {icon:"◎", label:"知识图谱", v:"graph",   badge:0,            color:C.alg},
-                {icon:"◈", label:"智能诊断", v:"diag",    badge:0,            color:C.cyan},
-                {icon:"📄",label:"试卷分析", v:"paper",   badge:0,            color:"#a78bfa"},
-                {icon:"📸",label:"作业识别", v:"ocr",     badge:0,            color:"#22d3ee"},
-                {icon:"🔥",label:"考前冲刺", v:"sprint",  badge:0,            color:C.red},
-                {icon:"🤖",label:"学伴Agent",v:"agent",  badge:0,            color:"#a78bfa"},
+                {icon:"⊡", label:"首页",     v:"home",      badge:0,            color:C.alg},
+                {icon:"∑", label:"数学",     v:"math",      badge:0,            color:C.alg},
+                {icon:"◎", label:"知识树",   v:"graph",     badge:0,            color:C.geo},
+                {icon:"✎", label:"练题",     v:"practice",  badge:0,            color:C.sta},
+                {icon:"📋",label:"错因",     v:"wrong",     badge:wrongSet.size+basicWrongSet.size, color:C.red},
+                {icon:"👤", label:"我的",     v:"me",        badge:0,            color:C.alg},
+                {icon:"🖨",label:"训练单",   v:"printplan", badge:0,            color:C.geo},
+                {icon:"◈", label:"诊断",     v:"diag",      badge:0,            color:C.cyan},
+                {icon:"📄",label:"试卷分析", v:"paper",     badge:0,            color:"#a78bfa"},
+                {icon:"📸",label:"作业识别", v:"ocr",       badge:0,            color:"#22d3ee"},
+                {icon:"🔥",label:"冲刺",     v:"sprint",    badge:0,            color:C.red},
+                {icon:"🤖",label:"AI 学伴",  v:"agent",     badge:0,            color:"#a78bfa"},
               ].map(item=>{
                 const isActive = view===item.v;
                 return(
@@ -8561,18 +11310,24 @@ export default function App() {
         )}
 
         {/* MAIN */}
-        <main style={{flex:1,overflowY:"auto",minWidth:0,
-          ...(bp.isMobile?{paddingBottom:"calc(56px + env(safe-area-inset-bottom))"}:{}),
+        <main style={{flex:1,overflowY:"auto",overflowX:"hidden",minWidth:0,width:"100%",maxWidth:"100%",
+          ...(bp.isMobile&&!isPortalShell?{paddingBottom:"calc(56px + env(safe-area-inset-bottom))",maxWidth:"100vw"}:{maxWidth:bp.isMobile?"100vw":"100%"}),
           ...(bp.isTablet?{marginLeft:44}:{})}}>
-          {view==="home"&&<PageHome mastered={mastered} wrongSet={wrongSet} progress={0} onNav={navigate}/>}
+          {view==="home"&&<PageHome mastered={mastered} wrongSet={wrongSet} onNav={navigate}/>}
+          {view==="math"&&<PageMathHome mastered={mastered} wrongSet={wrongSet} progress={0} onNav={navigate}/>}
+          {view==="english"&&<PageEnglish onNav={navigate}/>}
+          {view==="wechat"&&<PageWechatCoach authUser={authUser} authToken={authToken} onOpenAuth={()=>openAuth("login")} onNav={navigate}/>}
+          {view==="plan"&&<PageReversePlan onNav={navigate}/>}
+          {view==="printplan"&&<PagePrintPlan onNav={navigate} mastered={mastered} wrongSet={wrongSet} basicWrongSet={basicWrongSet}/>}
           {view==="me"&&<PageMe
             mastered={mastered} wrongSet={wrongSet} basicWrongSet={basicWrongSet}
             aiModel={aiModel} setAiModel={setAiModel}
             dsKey={dsKey} setDsKey={setDsKey}
             dbKey={dbKey} setDbKey={setDbKey}
+            authUser={authUser} authToken={authToken} onOpenAuth={()=>openAuth("login")}
             onNav={navigate} onClear={clearAllProgress}
           />}
-          {view==="graph"&&<ErrorBoundary label="知识图谱"><PageGraph mastered={mastered} onNav={navigate}/></ErrorBoundary>}
+          {view==="graph"&&<ErrorBoundary label="知识树"><PageGraph mastered={mastered} onNav={navigate}/></ErrorBoundary>}
           {view==="modules"&&<PageModules mastered={mastered} wrongSet={wrongSet} onNav={navigate}
             addWrong={addWrong} removeWrong={removeWrong}
             basicWrongSet={basicWrongSet} addBasicWrong={addBasicWrong} removeBasicWrong={removeBasicWrong}/>}
@@ -8580,7 +11335,7 @@ export default function App() {
             onNav={navigate} prevView={prevView} wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong}/>}
           {view==="methods"&&<PageMethods onNav={navigate}/>}
           {view==="practice"&&<PagePractice wrongSet={wrongSet} addWrong={addWrong} removeWrong={removeWrong} filters={practiceF} setFilters={setPracticeF} highlightQId={lastPracticeQId} clearHighlight={()=>setLastPracticeQId(null)}/>}
-          {view==="wrong"&&<ErrorBoundary label="错题本"><PageWrong wrongSet={wrongSet} removeWrong={removeWrong} mastered={mastered} onNav={navigate} basicWrongSet={basicWrongSet} removeBasicWrong={removeBasicWrong}/></ErrorBoundary>}
+          {view==="wrong"&&<ErrorBoundary label="错因修复"><PageWrong wrongSet={wrongSet} removeWrong={removeWrong} mastered={mastered} onNav={navigate} basicWrongSet={basicWrongSet} removeBasicWrong={removeBasicWrong}/></ErrorBoundary>}
           {view==="diag"&&<ErrorBoundary label="智能诊断"><PageDiag mastered={mastered} wrongSet={wrongSet} onNav={navigate}/></ErrorBoundary>}
           {view==="predict"&&<PagePredict/>}
           {view==="paper"&&<ErrorBoundary label="试卷分析"><PagePaper mastered={mastered} onNav={navigate}/></ErrorBoundary>}
@@ -8589,14 +11344,14 @@ export default function App() {
           {view==="teacher"&&<ErrorBoundary label="教师端"><PageTeacher onNav={navigate}/></ErrorBoundary>}
           {view==="parent"&&<ErrorBoundary label="家长端"><PageParent onNav={navigate}/></ErrorBoundary>}
           {view==="vip"&&<ErrorBoundary label="会员中心"><PageVIP onNav={navigate}/></ErrorBoundary>}
-          {view==="agent"&&<ErrorBoundary label="学伴Agent"><PageAgent onNav={navigate}/></ErrorBoundary>}
+          {view==="agent"&&<ErrorBoundary label="AI 学伴"><PageAgent onNav={navigate}/></ErrorBoundary>}
           {view==="admin"&&<ErrorBoundary label="后台管理"><PageAdmin onNav={navigate}/></ErrorBoundary>}
           {view==="morning"&&<PageMorning mastered={mastered} wrongSet={wrongSet} basicWrongSet={basicWrongSet}/>}
         </main>
         <AIFloat context={detailId ? {topicName: TOPIC_MAP[detailId]?.name} : null}/>
       </div>
       {/* 手机端底部 Tab 栏 */}
-      {bp.isMobile&&(
+      {bp.isMobile&&!isPortalShell&&(
         <BottomTabBar
           view={view}
           navigate={navigate}
@@ -8608,4 +11363,3 @@ export default function App() {
     </BPCtx.Provider>
   );
 }
-
