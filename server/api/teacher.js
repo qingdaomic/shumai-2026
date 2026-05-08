@@ -186,15 +186,69 @@ router.get('/classes/:id/report', authMiddleware, teacherGuard, async (req, res)
       [req.params.id]
     );
 
+    const students = await pool.query(
+      `SELECT u.id, u.nickname,
+              (SELECT COUNT(*) FROM progress p WHERE p.user_id = u.id AND p.mastered) as mastered,
+              (SELECT COUNT(*) FROM wrong_questions w WHERE w.user_id = u.id AND w.resolved = FALSE) as wrong_pending,
+              (SELECT COUNT(*) FROM checkins c WHERE c.user_id = u.id AND c.date > NOW() - INTERVAL '7 days') as week_active
+       FROM class_students cs
+       JOIN users u ON u.id = cs.student_id
+       WHERE cs.class_id = $1
+       ORDER BY wrong_pending DESC, mastered ASC`,
+      [req.params.id]
+    );
+
     res.json({
       className: cls.rows[0].name,
       stats: stats.rows[0],
       weakTopics: weakTopics.rows,
+      tomorrowAdvice: buildTomorrowAdvice(stats.rows[0], weakTopics.rows, students.rows),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+function buildTomorrowAdvice(stats = {}, weakTopics = [], students = []) {
+  const topWeak = weakTopics[0];
+  const focus = topWeak
+    ? `围绕高频错题 ${topWeak.question_id} 做 10 分钟讲评`
+    : '用 10 分钟复盘一个基础高频知识点';
+  const reason = topWeak
+    ? `这道题/同类题仍有 ${topWeak.cnt} 次未清除记录，适合做共性错因讲评。`
+    : '当前班级错题聚集不明显，先稳住基础节奏。';
+  const reviewQuestions = weakTopics.slice(0, 3).map(w => ({
+    questionId: w.question_id,
+    count: Number(w.cnt) || 0,
+  }));
+  const watchStudents = students
+    .filter(s => Number(s.wrong_pending) >= 5 || Number(s.week_active) <= 1)
+    .slice(0, 8)
+    .map(s => ({
+      id: s.id,
+      nickname: s.nickname,
+      reason: Number(s.wrong_pending) >= 5 ? `待清错题 ${s.wrong_pending} 道` : `本周活跃 ${s.week_active} 天`,
+    }));
+  const groups = {
+    patch: students.filter(s => Number(s.mastered) < 60).slice(0, 8).map(s => s.nickname),
+    steady: students.filter(s => Number(s.mastered) >= 60 && Number(s.mastered) < 120).slice(0, 8).map(s => s.nickname),
+    challenge: students.filter(s => Number(s.mastered) >= 120).slice(0, 8).map(s => s.nickname),
+  };
+
+  return {
+    focus,
+    reason,
+    tenMinutePlan: [
+      '2分钟：只讲题眼和常见错因',
+      '5分钟：板书一题，追问关键步骤',
+      '3分钟：同类变式，当堂确认是否能独立入口',
+    ],
+    reviewQuestions,
+    watchStudents,
+    groups,
+    teacherNote: '明天不要把问题讲散，先抓一个共性错因，让学生带着清楚入口离开。',
+  };
+}
 
 // ═══════════════════════════════════════════
 //  K4 AI 生成试卷

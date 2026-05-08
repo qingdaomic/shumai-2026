@@ -233,7 +233,7 @@ router.post('/learning-path', authMiddleware, async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: `你是"数脉学长"，一个智能数学学习规划Agent。根据学生的实际学情数据，制定今日个性化学习计划。
+          content: `你是"树脉学长"，一个智能数学学习规划Agent。根据学生的实际学情数据，制定今日个性化学习计划。
 
 返回严格的JSON格式：
 {
