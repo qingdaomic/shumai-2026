@@ -192,6 +192,11 @@ V4 目标：
 - [x] **V4.22** 前端静态同步与线上复查：只同步 V4.14-V4.20 前端 `dist/` 静态产物，备份线上静态文件，未 git pull，未同步后端，未重启 PM2，线上截图入档
 - [x] **V4.23** 本地工作区整理与后端变更分组：确认当前工作区不适合直接 git push 或服务器 git pull，已将前端、文档、后端、TTS/ASR、动画、部署脚本、本地私密和大型产物分组，并形成报告
 - [x] **V4.24** `.gitignore` 补漏与提交拆分清单：隔离 `local-notes/`、`video/`、`server/cosyvoice/`、`dist-singlefile/` 等风险目录，产出提交拆分建议，不提交不部署
+- [x] **V4.25** GitHub 提交拆分执行：将 V4 总入口与账户中心前端稳定版、V4 文档与截图记录拆成两个干净提交，未混入后端、部署、语音、动画和私密目录
+- [x] **V4.26** 推送 V4 干净提交到 GitHub：已将 `9b67776` 与 `e90e9fb` 推送到 `origin/main`，未部署、未服务器操作、未重启 PM2
+- [x] **V4.27** 后端变更拆分与风险归档：盘点剩余后端、schema、TTS/ASR、动画、部署脚本、SKE 前置资料和私密目录边界，形成 `文档/V4.27后端变更拆分报告.md`，不提交不部署
+- [x] **V4.28** 后端稳定能力逐文件审查与安全提交计划：审查 `server/index.js`、`server/api/*`、`server/services/*`、`server/bot.js`、`server/schema.sql`、`deploy/*`、`public/animations/`、`dist-singlefile/`，形成 `文档/V4.28后端稳定能力审查报告.md`，不提交不部署
+- [x] **V4.29** 后端低风险稳定提交执行：只提交 `server/api/ai.js`、`server/prompts/tutor.js`、`server/api/teacher.js` 三个低风险后端文件，并用独立 docs commit 记录 V4.27-V4.29 边界；不 push、不部署、不服务器操作
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
@@ -326,6 +331,41 @@ V4 目标：
 > - `public/animations/` 暂不忽略，因为它可能是未来前端可访问资源，需产品和部署策略单独判断
 > - 已更新提交拆分执行顺序清单：`文档/V4.24提交拆分清单.md`，明确 7 组提交顺序、永久不提交清单、暂缓提交清单、`dist-singlefile/` 特别处理和下一阶段建议
 > - V4.24 全程没有 `git add`、没有 `git commit`、没有 `git push`、没有 `git rm --cached`、没有删除文件、没有服务器操作
+>
+> V4.25 / V4.26 当前结论：
+> - 已创建并推送两个干净提交到 `origin/main`：`9b67776 feat: rebuild ShuMai V4 portal and account experience`、`e90e9fb docs: record V4 portal rollout and deployment findings`
+> - V4 前端稳定成果提交只包含 `src/App.jsx`、`index.html`、`public/manifest.json`、`public/sw.js`
+> - V4 文档截图提交包含 `.gitignore`、`tasks.md`、V4.23 / V4.24 报告、设计规范、建设记录和截图记录
+> - 未提交 `server/`、`deploy/`、`video/`、`local-notes/`、`public/animations/`、`server/cosyvoice/`、`dist-singlefile/`
+> - 未部署、未服务器操作、未重启 PM2、未改数据库
+>
+> V4.27 当前结论：
+> - 已检查剩余工作区：后端 API、schema、微信、TTS / ASR、动画、部署脚本、旧产物、数据注释和 SKE 前置资料仍混在一起
+> - 当前剩余变更仍不适合直接 `git push`，也不适合服务器整仓 `git pull`
+> - 已将剩余文件分为：后端稳定能力候选、数据库 / schema、TTS / ASR 暂缓、动画 / HyperFrames 暂缓、部署脚本与线上路径修正、SKE 前置资料、本地私密 / 绝不提交内容
+> - 敏感信息扫描未确认发现明文真实云密钥；看到的主要是环境变量名、占位值、示例说明和从 `process.env` 读取密钥的正常代码
+> - `public/animations/` 约 1.4M、89 个文件，暂不提交；`dist-singlefile/` 约 1.1M，其中 5 个文件已被 Git 跟踪，暂不处理
+> - 已新增报告：`文档/V4.27后端变更拆分报告.md`
+> - V4.27 全程没有 `git add`、没有 `git commit`、没有 `git push`、没有服务器操作、没有部署、没有重启 PM2、没有改数据库、没有删除文件
+>
+> V4.28 当前结论：
+> - 已逐文件审查后端稳定候选，确认 V4.29 只能做很窄的低风险提交，不能整体提交 `server/`
+> - 可进入 V4.29 的候选：`server/api/ai.js`、`server/prompts/tutor.js`、`server/api/teacher.js`
+> - 需要拆小后再考虑的文件：`server/index.js`、`server/package.json`、`server/api/wechat.js`、`server/bot.js`、`server/api/parent.js`
+> - 必须暂缓：`server/schema.sql`、`server/api/study-plan.js`、`server/services/daily.js`、`server/api/admin.js`、`server/api/svg.js`、全部 TTS / ASR、全部动画 / HyperFrames、部署脚本、`public/animations/`、`dist-singlefile/`
+> - `server/index.js` 当前同时挂载 TTS、ASR、study-plan，并在启动时调用动画 cron，不能原样进入后端稳定提交
+> - 敏感信息扫描未确认发现明文真实云密钥；看到的主要是环境变量名、占位示例和从 `process.env` 读取密钥的正常代码
+> - 已新增报告：`文档/V4.28后端稳定能力审查报告.md`
+> - V4.28 全程没有 `git add`、没有 `git commit`、没有 `git push`、没有服务器操作、没有部署、没有重启 PM2、没有改数据库、没有删除文件
+>
+> V4.29 当前结论：
+> - 已复核允许进入本轮的 3 个后端文件：`server/api/ai.js`、`server/prompts/tutor.js`、`server/api/teacher.js`
+> - 三个文件均不依赖 `server/index.js` 新挂载逻辑、不依赖未部署 schema、不依赖 TTS / ASR / 动画、不包含真实密钥、token、账号密码
+> - 已运行 `node --check server/api/ai.js`、`node --check server/prompts/tutor.js`、`node --check server/api/teacher.js`，均通过
+> - 本阶段计划创建两个本地 commit：低风险后端能力 commit、阶段审查文档 commit
+> - 本阶段不提交 `server/index.js`、`server/schema.sql`、`server/package.json`、`server/api/wechat.js`、`server/bot.js`、`server/api/parent.js`、`server/api/study-plan.js`、`server/services/daily.js`、`server/api/admin.js`、`server/api/svg.js`、TTS / ASR、动画、部署脚本、`public/animations/`、`dist-singlefile/`
+> - 已新增记录：`文档/V4.29后端低风险稳定提交记录.md`
+> - V4.29 不 push、不部署、不服务器操作、不重启 PM2、不改数据库、不删除文件
 
 ### W1. 微信 ClawBot 集成 ⭐⭐⭐
 
