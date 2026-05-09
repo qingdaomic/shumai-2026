@@ -273,6 +273,7 @@ V4 目标：
 - [x] **V4.93** 后端 health 命名校准与 3002 快速复验：将 release 后端命名统一为 `树脉后端`，临时 3002 验证后台 Skill 与 SKE 推荐后清理
 - [x] **V4.94** 后台操作日志正式上线执行：新建 release，切换 3001 到 `shumai-api-v4.94`，发布前端，完成公网与 API 观察验证
 - [x] **V4.95** 上线后 PM2 稳定化：备份 root PM2 dump，删除旧 stopped 进程，保存 `shumai-api-v4.94` 为当前持久化进程并验证公网健康
+- [x] **V4.96** 上线后真实页面验收：发现并修正 Nginx root 实际为 `/opt/shumai/dist`，公网加载新前端后验证首页、后台 Skill 管理与 SKE 推荐
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
