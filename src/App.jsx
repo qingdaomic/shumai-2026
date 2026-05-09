@@ -10886,6 +10886,16 @@ function skillEntryPointLabel(entryPoint) {
   return map[entryPoint] || entryPoint || "未知";
 }
 
+function petRecommendationMeta(value) {
+  const map={
+    lower_weight:{label:"建议降权",color:C.red},
+    rewrite_prompt:{label:"建议改写",color:C.sta},
+    adjust_entry:{label:"调整入口",color:C.purple},
+    keep_observing:{label:"保留观察",color:C.geo},
+  };
+  return map[value] || map.keep_observing;
+}
+
 function PetSkillWatchlist({items=[],onFocus}) {
   if(!items.length) {
     return (
@@ -10908,30 +10918,42 @@ function PetSkillWatchlist({items=[],onFocus}) {
         <span style={{fontSize:12,color:C.red,fontWeight:900,whiteSpace:"nowrap"}}>{items.length} 条</span>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
-        {items.map(item=>(
-          <button key={item.id} onClick={()=>onFocus?.(item.skill_key)}
-            style={{textAlign:"left",padding:10,borderRadius:10,cursor:"pointer",
-              background:C.s1,border:`1px solid ${C.red}22`,color:C.text}}>
-            <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
-              <div style={{fontSize:13,fontWeight:950,lineHeight:1.45,overflowWrap:"anywhere"}}>{item.name}</div>
-              <span style={{fontSize:12,color:Number(item.pet_quality_score||0)<0?C.red:C.sta,fontWeight:950,whiteSpace:"nowrap"}}>
-                {Number(item.pet_quality_score||0).toFixed(2)}
-              </span>
-            </div>
-            <div style={{fontSize:11,color:C.dim,marginTop:3,fontFamily:"monospace",overflowWrap:"anywhere"}}>
-              {item.skill_key}
-            </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,fontSize:11,fontWeight:850}}>
-              <span style={{color:C.muted}}>学伴 {item.pet_events||0}</span>
-              <span style={{color:C.sta}}>用 {item.pet_ai_used||0}</span>
-              <span style={{color:C.geo}}>好 {item.pet_helpful||0}</span>
-              <span style={{color:C.red}}>弱 {item.pet_not_helpful||0}</span>
-            </div>
-            <div style={{fontSize:11,color:C.muted,marginTop:6}}>
-              题目页 {item.question_coach_events||0} · 面板 {item.pet_panel_events||0} · 浮窗 {item.ai_float_events||0} · 反馈 {item.ai_float_feedback_events||0}
-            </div>
-          </button>
-        ))}
+        {items.map(item=>{
+          const rec=petRecommendationMeta(item.pet_recommendation);
+          return (
+            <button key={item.id} onClick={()=>onFocus?.(item.skill_key)}
+              style={{textAlign:"left",padding:10,borderRadius:10,cursor:"pointer",
+                background:C.s1,border:`1px solid ${rec.color}30`,color:C.text}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+                <div style={{fontSize:13,fontWeight:950,lineHeight:1.45,overflowWrap:"anywhere"}}>{item.name}</div>
+                <span style={{fontSize:12,color:Number(item.pet_quality_score||0)<0?C.red:C.sta,fontWeight:950,whiteSpace:"nowrap"}}>
+                  {Number(item.pet_quality_score||0).toFixed(2)}
+                </span>
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginTop:7}}>
+                <span style={{fontSize:11,color:rec.color,fontWeight:950,padding:"2px 6px",borderRadius:999,
+                  background:rec.color+"12",border:`1px solid ${rec.color}26`}}>
+                  {rec.label}
+                </span>
+                <span style={{fontSize:11,color:C.muted,lineHeight:1.45}}>
+                  {item.pet_recommendation_reason || "样本仍少，暂时保留观察。"}
+                </span>
+              </div>
+              <div style={{fontSize:11,color:C.dim,marginTop:6,fontFamily:"monospace",overflowWrap:"anywhere"}}>
+                {item.skill_key}
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,fontSize:11,fontWeight:850}}>
+                <span style={{color:C.muted}}>学伴 {item.pet_events||0}</span>
+                <span style={{color:C.sta}}>用 {item.pet_ai_used||0}</span>
+                <span style={{color:C.geo}}>好 {item.pet_helpful||0}</span>
+                <span style={{color:C.red}}>弱 {item.pet_not_helpful||0}</span>
+              </div>
+              <div style={{fontSize:11,color:C.muted,marginTop:6}}>
+                题目页 {item.question_coach_events||0} · 面板 {item.pet_panel_events||0} · 浮窗 {item.ai_float_events||0} · 反馈 {item.ai_float_feedback_events||0}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

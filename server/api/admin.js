@@ -249,6 +249,18 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
              ps.pet_events, ps.pet_clicks, ps.pet_ai_used, ps.pet_helpful, ps.pet_not_helpful,
              ps.question_coach_events, ps.pet_panel_events, ps.ai_float_events,
              ps.ai_float_feedback_events, ps.unknown_entry_events,
+             CASE
+               WHEN ps.pet_not_helpful >= 2 AND ps.pet_not_helpful > ps.pet_helpful THEN 'lower_weight'
+               WHEN ps.pet_not_helpful > 0 THEN 'rewrite_prompt'
+               WHEN ps.pet_events >= 2 AND ps.pet_ai_used = 0 THEN 'adjust_entry'
+               ELSE 'keep_observing'
+             END AS pet_recommendation,
+             CASE
+               WHEN ps.pet_not_helpful >= 2 AND ps.pet_not_helpful > ps.pet_helpful THEN '没帮助反馈连续偏高，建议先降权并复查提示词。'
+               WHEN ps.pet_not_helpful > 0 THEN '已有没帮助反馈，建议优先改写提示词表达。'
+               WHEN ps.pet_events >= 2 AND ps.pet_ai_used = 0 THEN '多次触发但未进入 AI 使用，建议检查入口位置或按钮文案。'
+               ELSE '样本仍少，暂时保留观察。'
+             END AS pet_recommendation_reason,
              ROUND((
                (ps.pet_clicks * 0.5)
                + (ps.pet_ai_used * 1.2)
