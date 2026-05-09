@@ -11773,6 +11773,13 @@ const PET_MODE_COPY = {
   happy: { label: "变强了", text: "这个小漏洞修好了。", color: C.ok },
 };
 
+const PET_XP_RULES = [
+  { label: "掌握知识点", xp: 30 },
+  { label: "订正错题", xp: 15 },
+  { label: "修复基础错题", xp: 15 },
+  { label: "完成晨读", xp: 20 },
+];
+
 function loadPetState(defaultOpen=true) {
   try {
     const saved = JSON.parse(localStorage.getItem(PET_STORAGE_KEY) || "{}");
@@ -11849,6 +11856,7 @@ function PetSprite({species,mode,level}) {
 function LearningPet() {
   const {isMobile}=useBP();
   const [pet,setPet]=useState(()=>loadPetState(!isMobile));
+  const [rulesOpen,setRulesOpen]=useState(false);
   const level=petLevel(pet.xp);
   const nextXp=level*80;
   const currentBase=(level-1)*80;
@@ -11930,6 +11938,28 @@ function LearningPet() {
           <span style={{fontSize:12,color:C.dim}}>{pet.xp}/{nextXp} XP</span>
         </div>
         <Bar v={pct} color={modeInfo.color} h={5}/>
+        <button onClick={()=>setRulesOpen(v=>!v)}
+          style={{width:"100%",marginTop:10,padding:"7px 9px",borderRadius:9,
+            border:`1px solid ${C.border}`,background:C.s2,color:C.muted,
+            cursor:"pointer",fontSize:12,fontWeight:850,textAlign:"left",
+            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>成长规则</span>
+          <span>{rulesOpen?"收起":"查看"}</span>
+        </button>
+        {rulesOpen&&(
+          <div style={{marginTop:7,display:"grid",gap:5}}>
+            {PET_XP_RULES.map(rule=>(
+              <div key={rule.label} style={{display:"flex",justifyContent:"space-between",gap:8,
+                padding:"5px 8px",borderRadius:8,background:C.bg,border:`1px solid ${C.border}`}}>
+                <span style={{fontSize:12,color:C.muted}}>{rule.label}</span>
+                <span style={{fontSize:12,color:C.ok,fontWeight:900}}>+{rule.xp} XP</span>
+              </div>
+            ))}
+            <div style={{fontSize:11,color:C.dim,lineHeight:1.5,padding:"2px 2px 0"}}>
+              只奖励有效学习，不奖励停留、刷新或反复点击。
+            </div>
+          </div>
+        )}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5,marginTop:12}}>
           {Object.values(PET_MODES).map(mode=>(
             <button key={mode} onClick={()=>setMode(mode)}
