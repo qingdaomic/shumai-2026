@@ -227,7 +227,45 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
       ORDER BY status DESC, quality_score DESC, s.weight DESC, s.updated_at DESC NULLS LAST, s.id DESC
       LIMIT ${limit}
     `;
-    const [list, totals, byType, byScene, eventTotals, bySource] = await Promise.all([
+    const petWatchlistSql = `
+      WITH pet_stats AS (
+        SELECT prompt_skill_id,
+               COUNT(*)::int AS pet_events,
+               COUNT(*) FILTER (WHERE event_type = 'click')::int AS pet_clicks,
+               COUNT(*) FILTER (WHERE event_type = 'ai_used')::int AS pet_ai_used,
+               COUNT(*) FILTER (WHERE event_type = 'helpful')::int AS pet_helpful,
+               COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS pet_not_helpful,
+               COUNT(*) FILTER (WHERE meta->>'entry_point' = 'question_coach_suggestion')::int AS question_coach_events,
+               COUNT(*) FILTER (WHERE meta->>'entry_point' = 'learning_pet_panel')::int AS pet_panel_events
+        FROM prompt_skill_events
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+          AND meta->>'entry' = 'learning_pet'
+        GROUP BY prompt_skill_id
+      )
+      SELECT s.id, s.skill_key, s.name, s.type, s.scene, s.topic_code, s.weight, s.status,
+             ps.pet_events, ps.pet_clicks, ps.pet_ai_used, ps.pet_helpful, ps.pet_not_helpful,
+             ps.question_coach_events, ps.pet_panel_events,
+             ROUND((
+               (ps.pet_clicks * 0.5)
+               + (ps.pet_ai_used * 1.2)
+               + (ps.pet_helpful * 3.0)
+               - (ps.pet_not_helpful * 4.0)
+             )::numeric / GREATEST(ps.pet_events, 1), 3) AS pet_quality_score
+      FROM prompt_skills s
+      JOIN pet_stats ps ON ps.prompt_skill_id = s.id
+      WHERE ps.pet_not_helpful > 0
+         OR (
+           ps.pet_events >= 2
+           AND (
+             (ps.pet_helpful = 0 AND ps.pet_ai_used = 0)
+             OR ps.pet_not_helpful >= ps.pet_helpful
+           )
+         )
+      ORDER BY ps.pet_not_helpful DESC, pet_quality_score ASC, ps.pet_events DESC, s.updated_at DESC NULLS LAST
+      LIMIT 8
+    `;
+
+    const [list, totals, byType, byScene, eventTotals, bySource, petWatchlist] = await Promise.all([
       pool.query(listSql, params),
       pool.query(
         `SELECT COUNT(*)::int AS total,
@@ -271,6 +309,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
          GROUP BY source
          ORDER BY events DESC, source ASC`
       ),
+      pool.query(petWatchlistSql),
     ]);
 
     res.json({
@@ -282,6 +321,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
         student_frontend: Number(totals.rows[0]?.student_frontend || 0),
         events: eventTotals.rows[0] || {},
         bySource: bySource.rows,
+        petWatchlist: petWatchlist.rows,
         byType: byType.rows,
         byScene: byScene.rows,
       },

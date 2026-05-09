@@ -10389,6 +10389,12 @@ function PageAdmin({onNav}) {
             ))}
           </div>
 
+          <PetSkillWatchlist items={skillSummary?.petWatchlist||[]} onFocus={(skillKey)=>setSkillFilters(prev=>({
+            ...prev,
+            search:skillKey || "",
+            source:"learning_pet",
+          }))}/>
+
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
@@ -10862,6 +10868,57 @@ function skillSourceLabel(source) {
     unknown:"未知",
   };
   return map[source] || source || "未知";
+}
+
+function PetSkillWatchlist({items=[],onFocus}) {
+  if(!items.length) {
+    return (
+      <div style={{padding:"10px 12px",borderRadius:10,background:C.geo+"0d",border:`1px solid ${C.geo}24`,
+        color:C.geo,fontSize:13,fontWeight:850,marginBottom:12}}>
+        学伴观察清单：最近 30 天暂无明显低效动作。
+      </div>
+    );
+  }
+
+  return (
+    <div style={{padding:12,borderRadius:12,background:C.red+"0d",border:`1px solid ${C.red}24`,marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:10}}>
+        <div>
+          <div style={{fontSize:14,color:C.red,fontWeight:950}}>学伴低效观察</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:3}}>
+            最近 30 天来自学伴，且没帮助偏高或使用后无正反馈的 Skill。
+          </div>
+        </div>
+        <span style={{fontSize:12,color:C.red,fontWeight:900,whiteSpace:"nowrap"}}>{items.length} 条</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
+        {items.map(item=>(
+          <button key={item.id} onClick={()=>onFocus?.(item.skill_key)}
+            style={{textAlign:"left",padding:10,borderRadius:10,cursor:"pointer",
+              background:C.s1,border:`1px solid ${C.red}22`,color:C.text}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+              <div style={{fontSize:13,fontWeight:950,lineHeight:1.45,overflowWrap:"anywhere"}}>{item.name}</div>
+              <span style={{fontSize:12,color:Number(item.pet_quality_score||0)<0?C.red:C.sta,fontWeight:950,whiteSpace:"nowrap"}}>
+                {Number(item.pet_quality_score||0).toFixed(2)}
+              </span>
+            </div>
+            <div style={{fontSize:11,color:C.dim,marginTop:3,fontFamily:"monospace",overflowWrap:"anywhere"}}>
+              {item.skill_key}
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,fontSize:11,fontWeight:850}}>
+              <span style={{color:C.muted}}>学伴 {item.pet_events||0}</span>
+              <span style={{color:C.sta}}>用 {item.pet_ai_used||0}</span>
+              <span style={{color:C.geo}}>好 {item.pet_helpful||0}</span>
+              <span style={{color:C.red}}>弱 {item.pet_not_helpful||0}</span>
+            </div>
+            <div style={{fontSize:11,color:C.muted,marginTop:6}}>
+              题目页 {item.question_coach_events||0} · 面板 {item.pet_panel_events||0}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SkillRow({item,api,onSaved}) {
