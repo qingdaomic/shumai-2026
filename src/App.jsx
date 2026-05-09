@@ -11828,6 +11828,7 @@ const PET_SKILL_ACTIONS = [
   {
     id: "breakthrough",
     label: "给我一个突破口",
+    skill_key: "math_common_hint_first_step_001",
     mode: PET_MODES.thinking,
     petLabel: "我先帮你找题眼",
     prompt: "请只给我这一步的突破口：先看哪个条件、从哪里下手，不要直接给完整答案。",
@@ -11835,6 +11836,7 @@ const PET_SKILL_ACTIONS = [
   {
     id: "wrong-cause",
     label: "判断错因",
+    skill_key: "math_common_error_diagnose_001",
     mode: PET_MODES.review,
     petLabel: "我们先判断卡在哪里",
     prompt: "请帮我判断这道题最可能的错因：概念不清、公式记错、审题漏条件、计算失误还是方法选错，并告诉我下一步怎么修。",
@@ -11842,6 +11844,7 @@ const PET_SKILL_ACTIONS = [
   {
     id: "easier-question",
     label: "来一道更简单的",
+    skill_key: "math_common_simplify_same_type_001",
     mode: PET_MODES.waiting,
     petLabel: "先降一阶练稳",
     prompt: "请根据我当前看的知识点或题目，出一道更简单的同类小题，并给我一个检查答案的标准。",
@@ -11897,6 +11900,37 @@ function triggerLearningPetSkillAction(action) {
   window.dispatchEvent(new CustomEvent("shumai-pet-skill-action", {
     detail: { ...action, at: Date.now() },
   }));
+}
+
+async function recordPetSkillActionEvent(action, context={}) {
+  if(!action?.skill_key) return;
+  const token=window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+  bumpSlashLocalStat(action.skill_key, "click");
+  try {
+    await fetch(`${BACKEND_URL}/api/skills/event`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        ...(token?{"Authorization":`Bearer ${token}`}:{})
+      },
+      body:JSON.stringify({
+        event_type:"click",
+        skill_key:action.skill_key,
+        question_id:context.question_id || "",
+        question_type:context.question_type || "all",
+        topic_code:context.topic_code || "",
+        method_code:context.method_code || "",
+        scene:context.scene || "pet_companion",
+        metadata:{
+          entry:"learning_pet",
+          action_id:action.id,
+          label:action.label,
+          prompt:action.prompt,
+          topic_name:context.topicName || "",
+        },
+      }),
+    });
+  } catch {}
 }
 
 function petLevel(xp) {
@@ -12260,6 +12294,7 @@ function AIFloat({context}) {
       const detail=e.detail || {};
       if(!detail.prompt) return;
       const topicHint=context?.topicName ? `当前我在学「${context.topicName}」。` : "";
+      recordPetSkillActionEvent(detail, {...(context || {}), scene:"pet_companion"});
       setOpen(true);
       setInput(`${topicHint}${detail.prompt}`);
     };
