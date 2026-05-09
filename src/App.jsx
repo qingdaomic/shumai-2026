@@ -527,6 +527,49 @@ const SLASH_FALLBACK_PROMPTS = [
   {label:"换一道同类题练一下", prompt:"换一道同类题练一下，先只给题目。", skill_key:"local_slash_same_type"},
 ];
 
+const SLASH_LOCAL_STATS_KEY = "shumai_slash_skill_stats_v1";
+
+function loadSlashLocalStats() {
+  try {
+    const raw = localStorage.getItem(SLASH_LOCAL_STATS_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSlashLocalStats(next) {
+  try {
+    localStorage.setItem(SLASH_LOCAL_STATS_KEY, JSON.stringify(next || {}));
+  } catch {}
+}
+
+function bumpSlashLocalStat(skillKey, field, amount=1) {
+  if(!skillKey) return;
+  const stats=loadSlashLocalStats();
+  const current=stats[skillKey] || {impression:0, click:0, ai_used:0, helpful:0, not_helpful:0};
+  current[field]=Number(current[field] || 0)+amount;
+  stats[skillKey]=current;
+  saveSlashLocalStats(stats);
+}
+
+function scoreSlashPromptItem(item, ctx) {
+  const stats=loadSlashLocalStats()[item.skill_key] || {};
+  let score=Number(item.weight || 0.7) * 10;
+  if (ctx.topic_code && item.topic_code && ctx.topic_code===item.topic_code) score += 12;
+  if (ctx.method_code && item.method_code && ctx.method_code===item.method_code) score += 10;
+  if (ctx.question_type && item.question_type && (item.question_type===ctx.question_type || item.question_type==="all")) score += 6;
+  if (ctx.scene && item.scene && (item.scene===ctx.scene || item.scene==="question_detail")) score += 4;
+  if (ctx.student_state && item.trigger_tags?.some(tag=>String(tag).includes(ctx.student_state))) score += 4;
+  score += Number(stats.click || 0) * 4;
+  score += Number(stats.ai_used || 0) * 5;
+  score += Number(stats.helpful || 0) * 6;
+  score -= Number(stats.not_helpful || 0) * 5;
+  score += Number(stats.impression || 0) * 1.2;
+  return score;
+}
+
 const SHUMAI_SEARCH_WRONG_CAUSES = [
   {id:"sign", name:"符号与运算顺序", desc:"负号、绝对值、乘方和去括号最容易造成第一步错误。", keywords:"符号 负号 运算 顺序 绝对值 乘方 去括号 有理数"},
   {id:"formula", name:"公式套用不稳", desc:"完全平方、平方差、求根公式、面积公式等需要先识别适用条件。", keywords:"公式 完全平方 平方差 求根 面积 周长 套用"},
@@ -1202,17 +1245,21 @@ async function fetchSlashPrompts(ctx) {
   const data=await res.json();
   const source=data?.source || "db";
   const apiItems=(data?.skills || []).slice(0,5).map((skill,idx)=>normalizeSlashSkill(skill,idx,source));
-  const merged=[...apiItems];
+  const merged=[...apiItems]
+    .map(item=>({...item, weight: scoreSlashPromptItem(item, ctx)}))
+    .sort((a,b)=>b.weight-a.weight || a.label.localeCompare(b.label));
   for(const item of SLASH_FALLBACK_PROMPTS.map((p,idx)=>normalizeSlashSkill(p,idx,"local"))) {
     if(merged.length>=5) break;
-    if(!merged.some(x=>x.label===item.label)) merged.push(item);
+    if(!merged.some(x=>x.label===item.label)) merged.push({...item, weight: scoreSlashPromptItem(item, ctx) - 2});
   }
-  return merged.slice(0,5);
+  return merged.slice(0,5)
+    .sort((a,b)=>(b.weight||0)-(a.weight||0) || a.label.localeCompare(b.label));
 }
 
 async function recordSlashPromptEvent(eventType, item, ctx) {
   if(!item?.skill_key) return;
   const token=window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+  bumpSlashLocalStat(item.skill_key, eventType);
   try {
     await fetch(`${BACKEND_URL}/api/skills/event`, {
       method:"POST",
@@ -1242,6 +1289,7 @@ async function recordSlashPromptEvent(eventType, item, ctx) {
 async function recordSkillAnswerEvent(eventType, item, ctx, extra={}) {
   if(!item?.skill_key) return;
   const token=window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+  bumpSlashLocalStat(item.skill_key, eventType);
   try {
     await fetch(`${BACKEND_URL}/api/skills/event`, {
       method:"POST",
