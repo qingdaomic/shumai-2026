@@ -10116,6 +10116,25 @@ function PageAdmin({onNav}) {
     }catch(e){setMsg("❌ "+e.message);}setLoading(false);
   };
 
+  const adjustPetSkillWeight=async(item)=>{
+    if(!item?.id) return;
+    const current=Number(item.weight ?? 0.7);
+    const next=Math.max(0.1, Math.round(current * 0.8 * 100) / 100);
+    const ok=window.confirm(`确认将「${item.name || item.skill_key}」权重从 ${current.toFixed(2)} 调低到 ${next.toFixed(2)}？`);
+    if(!ok) return;
+    try{
+      await api("PUT",`/skills/${item.id}`,{
+        weight:next,
+        status:item.status || "active",
+      });
+      setMsg("✅ 已调低学伴 Skill 权重");
+      loadSkills(skillFilters);
+      setTimeout(()=>setMsg(""),2200);
+    }catch(e){
+      setMsg("❌ "+e.message);
+    }
+  };
+
   useEffect(()=>{
     if(tab==="cron"||tab==="config") loadConfigs();
     else if(tab==="users") loadUsers();
@@ -10394,11 +10413,15 @@ function PageAdmin({onNav}) {
             ))}
           </div>
 
-          <PetSkillWatchlist items={skillSummary?.petWatchlist||[]} onFocus={(skillKey)=>setSkillFilters(prev=>({
-            ...prev,
-            search:skillKey || "",
-            source:"learning_pet",
-          }))}/>
+          <PetSkillWatchlist
+            items={skillSummary?.petWatchlist||[]}
+            onFocus={(skillKey)=>setSkillFilters(prev=>({
+              ...prev,
+              search:skillKey || "",
+              source:"learning_pet",
+            }))}
+            onAdjust={adjustPetSkillWeight}
+          />
 
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -10896,7 +10919,7 @@ function petRecommendationMeta(value) {
   return map[value] || map.keep_observing;
 }
 
-function PetSkillWatchlist({items=[],onFocus}) {
+function PetSkillWatchlist({items=[],onFocus,onAdjust}) {
   if(!items.length) {
     return (
       <div style={{padding:"10px 12px",borderRadius:10,background:C.geo+"0d",border:`1px solid ${C.geo}24`,
@@ -10921,8 +10944,8 @@ function PetSkillWatchlist({items=[],onFocus}) {
         {items.map(item=>{
           const rec=petRecommendationMeta(item.pet_recommendation);
           return (
-            <button key={item.id} onClick={()=>onFocus?.(item.skill_key)}
-              style={{textAlign:"left",padding:10,borderRadius:10,cursor:"pointer",
+            <div key={item.id}
+              style={{textAlign:"left",padding:10,borderRadius:10,
                 background:C.s1,border:`1px solid ${rec.color}30`,color:C.text}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
                 <div style={{fontSize:13,fontWeight:950,lineHeight:1.45,overflowWrap:"anywhere"}}>{item.name}</div>
@@ -10951,7 +10974,21 @@ function PetSkillWatchlist({items=[],onFocus}) {
               <div style={{fontSize:11,color:C.muted,marginTop:6}}>
                 题目页 {item.question_coach_events||0} · 面板 {item.pet_panel_events||0} · 浮窗 {item.ai_float_events||0} · 反馈 {item.ai_float_feedback_events||0}
               </div>
-            </button>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:9}}>
+                <button onClick={()=>onFocus?.(item.skill_key)}
+                  style={{padding:"4px 8px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:850,
+                    background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
+                  查看 Skill
+                </button>
+                {item.pet_recommendation==="lower_weight"&&(
+                  <button onClick={()=>onAdjust?.(item)}
+                    style={{padding:"4px 8px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:900,
+                      background:C.red+"12",color:C.red,border:`1px solid ${C.red}30`}}>
+                    确认降权 20%
+                  </button>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
