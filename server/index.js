@@ -35,7 +35,7 @@ app.use(express.json({ limit: '1mb' }));
 
 // 健康检查
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', name: '数脉后端', version: '1.0.0', time: new Date().toISOString() });
+  res.json({ status: 'ok', name: '树脉后端', version: '1.0.0', time: new Date().toISOString() });
 });
 
 // 路由
@@ -76,7 +76,7 @@ async function initDb() {
 // 启动服务
 initDb().then(() => {
   app.listen(PORT, () => {
-    console.log(`\n🚀 数脉后端 运行在 http://localhost:${PORT}`);
+    console.log(`\n🚀 树脉后端 运行在 http://localhost:${PORT}`);
     console.log(`   GET  /api/health`);
     console.log(`   POST /api/auth/register`);
     console.log(`   POST /api/auth/login\n`);
