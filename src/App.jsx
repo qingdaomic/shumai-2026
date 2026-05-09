@@ -10313,6 +10313,11 @@ function PageAdmin({onNav}) {
             <span style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
               没帮助 {skillSummary?.events?.not_helpful||0}
             </span>
+            {(skillSummary?.bySource||[]).slice(0,5).map(item=>(
+              <span key={item.source} style={{padding:"4px 8px",borderRadius:999,background:C.geo+"10",border:`1px solid ${C.geo}26`,color:C.geo}}>
+                来源 {skillSourceLabel(item.source)} · {item.events}
+              </span>
+            ))}
             {(skillSummary?.byType||[]).slice(0,6).map(item=>(
               <span key={item.type} style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
                 {item.type} · {item.total} · 权重均值 {item.avg_weight}
@@ -10324,7 +10329,7 @@ function PageAdmin({onNav}) {
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{borderBottom:`2px solid ${C.border}`}}>
-                  {["Skill","类型","场景","主题","质量","权重","状态","更新时间","操作"].map(h=>(
+                  {["Skill","类型","场景","主题","质量","来源","权重","状态","更新时间","操作"].map(h=>(
                     <th key={h} style={{padding:"8px 10px",textAlign:"left",color:C.muted,fontWeight:700,whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
@@ -10335,7 +10340,7 @@ function PageAdmin({onNav}) {
                 ))}
                 {skills.length===0&&(
                   <tr>
-                    <td colSpan={9} style={{padding:18,textAlign:"center",color:C.muted}}>
+                    <td colSpan={10} style={{padding:18,textAlign:"center",color:C.muted}}>
                       暂无 Skill，或筛选条件下没有结果。
                     </td>
                   </tr>
@@ -10784,6 +10789,17 @@ function ResourceBillingPanel({data,onRefresh,api}) {
   );
 }
 
+function skillSourceLabel(source) {
+  const map={
+    slash_prompt:"斜杠",
+    skill_answer:"AI回答",
+    learning_pet:"学伴",
+    search:"搜索",
+    unknown:"未知",
+  };
+  return map[source] || source || "未知";
+}
+
 function SkillRow({item,api,onSaved}) {
   const [weight,setWeight]=useState(String(item.weight ?? 0.7));
   const [status,setStatus]=useState(item.status || "active");
@@ -10815,6 +10831,12 @@ function SkillRow({item,api,onSaved}) {
     C.muted;
   const quality=Number(item.quality_score || 0);
   const qualityColor=quality>0.8?C.ok:quality<0?C.red:C.sta;
+  const sourceStats=[
+    {key:"source_slash_prompt",label:"斜杠",color:C.alg},
+    {key:"source_skill_answer",label:"AI",color:C.purple},
+    {key:"source_learning_pet",label:"学伴",color:C.geo},
+    {key:"source_search",label:"搜索",color:C.sta},
+  ].filter(s=>Number(item[s.key] || 0)>0);
 
   return (
     <tr style={{borderBottom:`1px solid ${C.border}`}}>
@@ -10838,6 +10860,19 @@ function SkillRow({item,api,onSaved}) {
         <div style={{fontSize:11,color:C.dim}}>
           好{item.helpful||0} / 弱{item.not_helpful||0}
         </div>
+      </td>
+      <td style={{padding:"10px 10px",whiteSpace:"nowrap"}}>
+        {sourceStats.length>0?(
+          <div style={{display:"grid",gap:4}}>
+            {sourceStats.map(s=>(
+              <span key={s.key} style={{fontSize:11,color:s.color,fontWeight:850}}>
+                {s.label} {item[s.key]||0}
+              </span>
+            ))}
+          </div>
+        ):(
+          <span style={{fontSize:12,color:C.dim}}>—</span>
+        )}
       </td>
       <td style={{padding:"10px 10px"}}>
         <input value={weight} onChange={e=>setWeight(e.target.value)}

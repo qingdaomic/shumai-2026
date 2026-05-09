@@ -178,7 +178,12 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
                COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks,
                COUNT(*) FILTER (WHERE event_type = 'ai_used')::int AS ai_used,
                COUNT(*) FILTER (WHERE event_type = 'helpful')::int AS helpful,
-               COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS not_helpful
+               COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS not_helpful,
+               COUNT(*) FILTER (WHERE meta->>'entry' = 'slash_prompt')::int AS source_slash_prompt,
+               COUNT(*) FILTER (WHERE meta->>'entry' = 'skill_answer')::int AS source_skill_answer,
+               COUNT(*) FILTER (WHERE meta->>'entry' = 'learning_pet')::int AS source_learning_pet,
+               COUNT(*) FILTER (WHERE meta->>'entry' = 'search')::int AS source_search,
+               COUNT(*) FILTER (WHERE COALESCE(meta->>'entry', '') = '')::int AS source_unknown
         FROM prompt_skill_events
         WHERE created_at >= NOW() - INTERVAL '30 days'
         GROUP BY prompt_skill_id
@@ -193,6 +198,11 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
              COALESCE(es.ai_used, 0) AS ai_used,
              COALESCE(es.helpful, 0) AS helpful,
              COALESCE(es.not_helpful, 0) AS not_helpful,
+             COALESCE(es.source_slash_prompt, 0) AS source_slash_prompt,
+             COALESCE(es.source_skill_answer, 0) AS source_skill_answer,
+             COALESCE(es.source_learning_pet, 0) AS source_learning_pet,
+             COALESCE(es.source_search, 0) AS source_search,
+             COALESCE(es.source_unknown, 0) AS source_unknown,
              ROUND((
                (COALESCE(es.clicks, 0) * 0.5)
                + (COALESCE(es.ai_used, 0) * 1.2)
@@ -205,7 +215,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
       ORDER BY status DESC, quality_score DESC, s.weight DESC, s.updated_at DESC NULLS LAST, s.id DESC
       LIMIT ${limit}
     `;
-    const [list, totals, byType, byScene, eventTotals] = await Promise.all([
+    const [list, totals, byType, byScene, eventTotals, bySource] = await Promise.all([
       pool.query(listSql, params),
       pool.query(
         `SELECT COUNT(*)::int AS total,
@@ -236,6 +246,19 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
          FROM prompt_skill_events
          WHERE created_at >= NOW() - INTERVAL '30 days'`
       ),
+      pool.query(
+        `SELECT COALESCE(NULLIF(meta->>'entry', ''), 'unknown') AS source,
+                COUNT(*)::int AS events,
+                COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+                COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks,
+                COUNT(*) FILTER (WHERE event_type = 'ai_used')::int AS ai_used,
+                COUNT(*) FILTER (WHERE event_type = 'helpful')::int AS helpful,
+                COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS not_helpful
+         FROM prompt_skill_events
+         WHERE created_at >= NOW() - INTERVAL '30 days'
+         GROUP BY source
+         ORDER BY events DESC, source ASC`
+      ),
     ]);
 
     res.json({
@@ -246,6 +269,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
         disabled: Number(totals.rows[0]?.disabled || 0),
         student_frontend: Number(totals.rows[0]?.student_frontend || 0),
         events: eventTotals.rows[0] || {},
+        bySource: bySource.rows,
         byType: byType.rows,
         byScene: byScene.rows,
       },
