@@ -2,7 +2,12 @@
 set -euo pipefail
 # 部署后端到香港服务器
 SERVER="${SHUMAI_DEPLOY_SERVER:-ubuntu@43.128.59.105}"
-REMOTE_DIR="${SHUMAI_DEPLOY_RELEASE_DIR:-/opt/shumai-releases/current/repo}"
+REMOTE_DIR="${SHUMAI_DEPLOY_RELEASE_DIR:-}"
+
+if [[ -z "$REMOTE_DIR" ]]; then
+  echo "请先设置 SHUMAI_DEPLOY_RELEASE_DIR，例如：/opt/shumai-releases/v4.94-20260509-190052/repo" >&2
+  exit 1
+fi
 
 echo "==> 上传后端代码..."
 ssh "$SERVER" "sudo mkdir -p $REMOTE_DIR/server && sudo chown -R \$(whoami):\$(whoami) $REMOTE_DIR"

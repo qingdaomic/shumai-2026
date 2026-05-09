@@ -2,7 +2,7 @@
 
 > 预算 ~¥40/月 | Ubuntu 22.04 | Node.js 20 | PostgreSQL 15 | PM2 + Nginx
 
-> 2026-05-09 校准：当前线上前端静态根目录以 `/opt/shumai/dist` 为准，正式后端进程名为 `shumai-api-v4.94`，PM2 以 root 运行。
+> 2026-05-09 校准：当前线上前端静态根目录以 `/opt/shumai/dist` 为准，正式后端进程名为 `shumai-api-v4.94`，PM2 以 root 运行。旧 `/opt/shumai` 目录只作为历史目录和回滚参考，不再作为默认发布目录。
 
 ---
 
@@ -78,7 +78,7 @@ EOF
 
 ### 初始化表结构
 ```bash
-sudo -u postgres psql -d shumai -f /opt/shumai-releases/current/repo/server/schema.sql
+sudo -u postgres psql -d shumai -f /opt/shumai-releases/<release>/repo/server/schema.sql
 ```
 
 ---
@@ -87,37 +87,41 @@ sudo -u postgres psql -d shumai -f /opt/shumai-releases/current/repo/server/sche
 
 ```bash
 # 创建目录
-mkdir -p /opt/shumai /opt/shumai/dist /var/log/shumai
+mkdir -p /opt/shumai-releases /opt/shumai/dist /var/log/shumai
 
-# 克隆或上传代码（选择一种）
-# 方法A：Git
-cd /opt/shumai
-git clone https://github.com/your-org/shumai.git .
+# 每次发布创建独立 release 目录
+RELEASE=/opt/shumai-releases/vX.YY-$(date +%Y%m%d-%H%M%S)
+mkdir -p "$RELEASE"
 
-# 方法B：rsync 本地上传（在本机执行）
+# 方法A：Git clone 到新 release
+git clone https://github.com/your-org/shumai.git "$RELEASE/repo"
+cd "$RELEASE/repo"
+git status -sb
+
+# 方法B：rsync 本地上传到指定 release（在本机执行）
 rsync -avz --exclude node_modules --exclude dist \
   /Users/mac/Desktop/中考数学-系统-2026/server/ \
-  root@your_server_ip:/opt/shumai-releases/current/repo/server/
+  root@your_server_ip:/opt/shumai-releases/<release>/repo/server/
 
 # 安装依赖
-cd /opt/shumai-releases/current/repo/server
+cd "$RELEASE/repo/server"
 npm install --production
 ```
 
 ### 配置环境变量
 ```bash
-cp /opt/shumai-releases/current/repo/server/env-template.txt /opt/shumai-releases/current/repo/server/.env
-vim /opt/shumai-releases/current/repo/server/.env
+cp "$RELEASE/repo/server/env-template.txt" "$RELEASE/repo/server/.env"
+vim "$RELEASE/repo/server/.env"
 ```
 
-填入以下内容：
+`.env` 至少需要包含以下键。不要把真实值写入仓库或文档：
 ```ini
-PORT=3001
-DATABASE_URL=postgres://shumai:your_strong_password_here@localhost:5432/shumai
-JWT_SECRET=your-64-char-random-secret
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
-WECHAT_BOT_TOKEN=
-NODE_ENV=production
+PORT
+DATABASE_URL
+JWT_SECRET
+DEEPSEEK_API_KEY
+WECHAT_BOT_TOKEN
+NODE_ENV
 ```
 
 生成安全的 JWT_SECRET：
@@ -130,10 +134,35 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ## 六、PM2 启动服务
 
 ```bash
-cd /opt/shumai-releases/current/repo/server
+cd "$RELEASE/repo/server"
 
-# 启动 API 服务
-pm2 start ecosystem.config.cjs --only shumai-api-v4.94
+# 当前仓库内 server/ecosystem.config.cjs 仍保留旧 /opt/shumai/server 写法。
+# release 切换时使用临时 PM2 配置，cwd 指向本次 release 的 server 目录。
+cat > /tmp/shumai-api-v4.94.config.cjs <<EOF
+module.exports = {
+  apps: [{
+    name: 'shumai-api-v4.94',
+    script: 'index.js',
+    cwd: '$RELEASE/repo/server',
+    instances: 1,
+    exec_mode: 'fork',
+    node_args: '--experimental-vm-modules',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 3001
+    },
+    error_file: '/var/log/shumai/shumai-err.log',
+    out_file: '/var/log/shumai/shumai-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    restart_delay: 3000,
+    max_restarts: 10,
+    watch: false,
+    autorestart: true
+  }]
+};
+EOF
+
+pm2 start /tmp/shumai-api-v4.94.config.cjs --only shumai-api-v4.94
 
 # 验证启动
 pm2 status
@@ -145,8 +174,7 @@ pm2 save
 
 **启动微信 Bot（可选）：**
 ```bash
-pm2 start ecosystem.config.cjs --only shumai-bot
-pm2 save
+# 当前正式上线链路暂未把 Bot 纳入 release PM2 切换；如需启动，先单独复核 cwd 与环境变量。
 ```
 
 **常用 PM2 命令：**
@@ -260,10 +288,11 @@ tail -f /var/log/shumai/shumai-err.log
 
 ### 代码更新
 ```bash
-cd /opt/shumai-releases/current/repo/server
-git pull                    # 仅 release 目录更新时使用
-npm install --production    # 如有新依赖
-pm2 reload shumai-api-v4.94 # 零停机重载当前正式进程
+cd /opt/shumai-releases/<new-release>/repo/server
+npm install --production
+node --check index.js
+
+# 验证通过后，再按 release 切换流程更新 PM2。
 ```
 
 ### 数据库备份（每日 cron）
