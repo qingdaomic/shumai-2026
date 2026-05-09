@@ -10025,7 +10025,7 @@ function PageAdmin({onNav}) {
   const [resources,setResources]=useState(null);
   const [skills,setSkills]=useState([]);
   const [skillSummary,setSkillSummary]=useState(null);
-  const [skillFilters,setSkillFilters]=useState({search:"",type:"all",status:"all",scene:"all",subject:"all"});
+  const [skillFilters,setSkillFilters]=useState({search:"",type:"all",status:"all",scene:"all",subject:"all",source:"all"});
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
   // D6 题库状态
@@ -10271,7 +10271,7 @@ function PageAdmin({onNav}) {
             ))}
           </div>
 
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"2fr 1fr 1fr 1fr 1fr",gap:8,marginBottom:12}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"2fr repeat(5,1fr)",gap:8,marginBottom:12}}>
             <input value={skillFilters.search} onChange={e=>setSkillFilters(prev=>({...prev,search:e.target.value}))}
               placeholder="搜索 skill_key / 名称 / 内容"
               style={{padding:"8px 12px",borderRadius:8,fontSize:14,background:C.s2,border:`1px solid ${C.border}`,color:C.text,outline:"none"}}/>
@@ -10297,6 +10297,15 @@ function PageAdmin({onNav}) {
               style={{padding:"8px 10px",borderRadius:8,fontSize:14,background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
               <option value="all">全部学科</option>
               <option value="math">math</option>
+            </select>
+            <select value={skillFilters.source} onChange={e=>setSkillFilters(prev=>({...prev,source:e.target.value}))}
+              style={{padding:"8px 10px",borderRadius:8,fontSize:14,background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+              <option value="all">全部来源</option>
+              <option value="slash_prompt">斜杠提问</option>
+              <option value="skill_answer">AI回答</option>
+              <option value="learning_pet">学伴</option>
+              <option value="search">搜索</option>
+              <option value="unknown">未知</option>
             </select>
           </div>
 

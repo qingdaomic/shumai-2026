@@ -145,7 +145,15 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
     const status = String(req.query.status || '').trim();
     const scene = String(req.query.scene || '').trim();
     const subject = String(req.query.subject || '').trim();
+    const source = String(req.query.source || '').trim();
     const limit = Math.min(Math.max(Number(req.query.limit || 120) || 120, 20), 300);
+    const sourceColumnMap = {
+      slash_prompt: 'source_slash_prompt',
+      skill_answer: 'source_skill_answer',
+      learning_pet: 'source_learning_pet',
+      search: 'source_search',
+      unknown: 'source_unknown',
+    };
 
     const where = [];
     const params = [];
@@ -168,6 +176,10 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
     if (subject && subject !== 'all') {
       params.push(subject);
       where.push(`subject = $${params.length}`);
+    }
+    const listWhere = where.map(clause => clause.replace(/\b(skill_key|name|content|type|status|scene|subject)\b/g, 's.$1'));
+    if (source && source !== 'all' && sourceColumnMap[source]) {
+      listWhere.push(`COALESCE(es.${sourceColumnMap[source]}, 0) > 0`);
     }
 
     const listSql = `
@@ -211,7 +223,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
              )::numeric / GREATEST(COALESCE(es.impressions, 0), 1), 3) AS quality_score
       FROM prompt_skills s
       LEFT JOIN event_stats es ON es.prompt_skill_id = s.id
-      ${where.length ? `WHERE ${where.map(clause => clause.replace(/\b(skill_key|name|content|type|status|scene|subject)\b/g, 's.$1')).join(' AND ')}` : ''}
+      ${listWhere.length ? `WHERE ${listWhere.join(' AND ')}` : ''}
       ORDER BY status DESC, quality_score DESC, s.weight DESC, s.updated_at DESC NULLS LAST, s.id DESC
       LIMIT ${limit}
     `;
@@ -273,7 +285,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
         byType: byType.rows,
         byScene: byScene.rows,
       },
-      filters: { search, type, status, scene, subject, limit },
+      filters: { search, type, status, scene, subject, source, limit },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
