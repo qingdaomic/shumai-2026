@@ -2874,6 +2874,12 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
     try{localStorage.setItem("shumai_page_plan_v2_saved",JSON.stringify({profile,plan,savedAt:new Date().toISOString()}));}catch{}
     setSavedAt(new Date().toLocaleString("zh-CN"));
   };
+  const summaryItems=[
+    {label:"目标差距",value:`${plan.gap}分`,color:plan.gap>20?C.red:C.gold},
+    {label:"本周重心",value:plan.focus[0]?.name||"—",color:C.geo},
+    {label:"今日节奏",value:plan.load[0]||"—",color:C.alg},
+    {label:"稳定指数",value:`${plan.stability}`,color:C.purple},
+  ];
 
   return(
     <div style={{padding:isMobile?10:28,maxWidth:1120,margin:"0 auto",width:"100%"}}>
@@ -2897,6 +2903,16 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
           <Tag c={C.alg}>AI 路线图</Tag>
           <Tag c={C.gold}>里程碑</Tag>
           <Tag c={C.purple}>家长摘要</Tag>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(4,minmax(0,1fr))",gap:8,marginTop:14}}>
+          {summaryItems.map(item=>(
+            <div key={item.label} style={{background:C.s2,border:`1px solid ${item.color}20`,borderRadius:12,padding:"10px 12px",minWidth:0}}>
+              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{item.label}</div>
+              <div style={{fontSize:isMobile?15:16,fontWeight:900,color:item.color,overflowWrap:"anywhere",lineHeight:1.35}}>
+                {item.value}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
