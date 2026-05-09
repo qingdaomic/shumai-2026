@@ -11788,6 +11788,30 @@ const PET_XP_RULES = [
   { label: "完成晨读", xp: 20 },
 ];
 
+const PET_SKILL_ACTIONS = [
+  {
+    id: "breakthrough",
+    label: "给我一个突破口",
+    mode: PET_MODES.thinking,
+    petLabel: "我先帮你找题眼",
+    prompt: "请只给我这一步的突破口：先看哪个条件、从哪里下手，不要直接给完整答案。",
+  },
+  {
+    id: "wrong-cause",
+    label: "判断错因",
+    mode: PET_MODES.review,
+    petLabel: "我们先判断卡在哪里",
+    prompt: "请帮我判断这道题最可能的错因：概念不清、公式记错、审题漏条件、计算失误还是方法选错，并告诉我下一步怎么修。",
+  },
+  {
+    id: "easier-question",
+    label: "来一道更简单的",
+    mode: PET_MODES.waiting,
+    petLabel: "先降一阶练稳",
+    prompt: "请根据我当前看的知识点或题目，出一道更简单的同类小题，并给我一个检查答案的标准。",
+  },
+];
+
 function loadPetState(defaultOpen=true) {
   try {
     const saved = JSON.parse(localStorage.getItem(PET_STORAGE_KEY) || "{}");
@@ -11823,6 +11847,14 @@ function setLearningPetMode(mode, label="") {
   if (!mode) return;
   window.dispatchEvent(new CustomEvent("shumai-pet-mode", {
     detail: { mode, label, at: Date.now() },
+  }));
+}
+
+function triggerLearningPetSkillAction(action) {
+  if (!action) return;
+  setLearningPetMode(action.mode, action.petLabel);
+  window.dispatchEvent(new CustomEvent("shumai-pet-skill-action", {
+    detail: { ...action, at: Date.now() },
   }));
 }
 
@@ -11972,6 +12004,17 @@ function LearningPet() {
           <span style={{fontSize:12,color:C.dim}}>{pet.xp}/{nextXp} XP</span>
         </div>
         <Bar v={pct} color={modeInfo.color} h={5}/>
+        <div style={{display:"grid",gap:6,marginTop:10}}>
+          {PET_SKILL_ACTIONS.map(action=>(
+            <button key={action.id} onClick={()=>triggerLearningPetSkillAction(action)}
+              style={{minHeight:34,padding:"7px 9px",borderRadius:9,
+                border:`1px solid ${C.geo}30`,background:C.geo+"10",
+                color:C.text,cursor:"pointer",fontSize:12,fontWeight:900,
+                textAlign:"left",lineHeight:1.35}}>
+              {action.label}
+            </button>
+          ))}
+        </div>
         <button onClick={()=>setRulesOpen(v=>!v)}
           style={{width:"100%",marginTop:10,padding:"7px 9px",borderRadius:9,
             border:`1px solid ${C.border}`,background:C.s2,color:C.muted,
@@ -12047,6 +12090,18 @@ function AIFloat({context}) {
   useEffect(()=>{
     if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
   },[msgs]);
+
+  useEffect(()=>{
+    const onPetSkillAction=(e)=>{
+      const detail=e.detail || {};
+      if(!detail.prompt) return;
+      const topicHint=context?.topicName ? `当前我在学「${context.topicName}」。` : "";
+      setOpen(true);
+      setInput(`${topicHint}${detail.prompt}`);
+    };
+    window.addEventListener("shumai-pet-skill-action", onPetSkillAction);
+    return()=>window.removeEventListener("shumai-pet-skill-action", onPetSkillAction);
+  },[context]);
 
   const send = async () => {
     if(!input.trim()||loading) return;
