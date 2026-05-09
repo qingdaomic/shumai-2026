@@ -251,6 +251,7 @@ V4 目标：
 - [x] **V4.71** SKE/PET 改写前后对比：后台人工改写 Skill 时展示原内容、改写状态和字数变化，并写入最近人工操作
 - [x] **V4.72** SKE/PET 后台操作日志持久化方案：设计 `admin_operation_logs` 表、API 草案、前端降级策略和上线边界
 - [x] **V4.73** SKE/PET 后台操作日志 migration 草案：新增独立 `admin_operation_logs` migration，不执行 SQL，不改 `server/schema.sql`
+- [x] **V4.74** SKE/PET 后台操作日志 API 草案：新增写入 / 读取接口，数据库未迁移时安全返回 `stored:false`
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`

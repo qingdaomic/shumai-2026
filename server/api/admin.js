@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import { authMiddleware } from './auth.js';
 import pool from '../db.js';
+import { createAdminOperationLog, listAdminOperationLogs } from '../services/admin-operation-logs.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -415,6 +416,28 @@ router.put('/skills/:id', authMiddleware, adminGuard, async (req, res) => {
     res.json({ ok: true, item: result.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+//  后台操作日志
+// ═══════════════════════════════════════════
+
+// GET /api/admin/operation-logs — 最近后台人工操作
+router.get('/operation-logs', authMiddleware, adminGuard, async (req, res) => {
+  try {
+    res.json(await listAdminOperationLogs(req.query));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/operation-logs — 记录后台人工操作
+router.post('/operation-logs', authMiddleware, adminGuard, async (req, res) => {
+  try {
+    res.json(await createAdminOperationLog(req.body, req.user));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
