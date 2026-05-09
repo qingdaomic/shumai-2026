@@ -10082,6 +10082,7 @@ function PageAdmin({onNav}) {
   const [skillSummary,setSkillSummary]=useState(null);
   const [skillFilters,setSkillFilters]=useState({search:"",type:"all",status:"all",scene:"all",subject:"all",source:"all"});
   const [petRewrite,setPetRewrite]=useState(null);
+  const [skillOps,setSkillOps]=useState([]);
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
   // D6 题库状态
@@ -10117,6 +10118,10 @@ function PageAdmin({onNav}) {
     }catch(e){setMsg("❌ "+e.message);}setLoading(false);
   };
 
+  const recordSkillOp=(op)=>{
+    setSkillOps(prev=>[{...op,at:Date.now()},...prev].slice(0,6));
+  };
+
   const adjustPetSkillWeight=async(item)=>{
     if(!item?.id) return;
     const current=Number(item.weight ?? 0.7);
@@ -10127,6 +10132,11 @@ function PageAdmin({onNav}) {
       await api("PUT",`/skills/${item.id}`,{
         weight:next,
         status:item.status || "active",
+      });
+      recordSkillOp({
+        type:"降权",
+        skill:item.name || item.skill_key,
+        detail:`权重 ${current.toFixed(2)} → ${next.toFixed(2)}`,
       });
       setMsg("✅ 已调低学伴 Skill 权重");
       loadSkills(skillFilters);
@@ -10148,6 +10158,11 @@ function PageAdmin({onNav}) {
         content,
         weight:petRewrite.item.weight,
         status:petRewrite.item.status || "active",
+      });
+      recordSkillOp({
+        type:"改写",
+        skill:petRewrite.item.name || petRewrite.item.skill_key,
+        detail:"已保存人工改写内容",
       });
       setMsg("✅ 已保存 Skill 改写内容");
       setPetRewrite(null);
@@ -10446,6 +10461,8 @@ function PageAdmin({onNav}) {
             onAdjust={adjustPetSkillWeight}
             onRewrite={(item)=>setPetRewrite({item,content:item.content || ""})}
           />
+
+          <SkillOperationTips ops={skillOps}/>
 
           <PetSkillRewritePanel
             draft={petRewrite}
@@ -11063,6 +11080,36 @@ function PetSkillRewritePanel({draft,onChange,onCancel,onSave}) {
           保存改写
         </button>
       </div>
+    </div>
+  );
+}
+
+function SkillOperationTips({ops=[]}) {
+  return (
+    <div style={{padding:12,borderRadius:12,background:C.alg+"0d",border:`1px solid ${C.alg}24`,marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:8}}>
+        <div>
+          <div style={{fontSize:14,color:C.alg,fontWeight:950}}>最近人工操作</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:3}}>本页临时记录，用于确认刚才做了什么；刷新后清空。</div>
+        </div>
+        <span style={{fontSize:12,color:C.alg,fontWeight:900}}>{ops.length} 条</span>
+      </div>
+      {ops.length===0?(
+        <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>
+          还没有人工调权或改写。建议先从观察清单进入，再确认操作。
+        </div>
+      ):(
+        <div style={{display:"grid",gap:6}}>
+          {ops.map(op=>(
+            <div key={`${op.at}-${op.type}`} style={{display:"grid",gridTemplateColumns:"64px 1fr auto",gap:8,
+              alignItems:"center",padding:"7px 8px",borderRadius:9,background:C.s1,border:`1px solid ${C.border}`}}>
+              <span style={{fontSize:12,color:op.type==="降权"?C.red:C.sta,fontWeight:950}}>{op.type}</span>
+              <span style={{fontSize:12,color:C.text,overflowWrap:"anywhere"}}>{op.skill} · {op.detail}</span>
+              <span style={{fontSize:11,color:C.dim,whiteSpace:"nowrap"}}>{new Date(op.at).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
