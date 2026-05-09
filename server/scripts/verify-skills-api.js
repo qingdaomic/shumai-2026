@@ -35,6 +35,7 @@ try {
 
   const firstSkill = recommend.body.skills[0];
   assert(firstSkill?.skill_key, 'recommend first skill should include skill_key');
+  assert(typeof firstSkill?.recommend_score === 'number', 'recommend first skill should include recommend_score');
 
   const impression = await postJson('/api/skills/event', {
     skill_key: firstSkill.skill_key,

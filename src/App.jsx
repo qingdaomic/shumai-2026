@@ -562,7 +562,9 @@ function bumpSlashLocalStat(skillKey, field, amount=1) {
 
 function scoreSlashPromptItem(item, ctx) {
   const stats=loadSlashLocalStats()[item.skill_key] || {};
-  let score=Number(item.weight || 0.7) * 10;
+  let score=Number.isFinite(Number(item.recommend_score)) && Number(item.recommend_score) > 0
+    ? Number(item.recommend_score)
+    : Number(item.weight || 0.7) * 10;
   if (ctx.topic_code && item.topic_code && ctx.topic_code===item.topic_code) score += 12;
   if (ctx.method_code && item.method_code && ctx.method_code===item.method_code) score += 10;
   if (ctx.question_type && item.question_type && (item.question_type===ctx.question_type || item.question_type==="all")) score += 6;
@@ -1315,11 +1317,13 @@ function isSlashPromptTrigger(value="") {
 function normalizeSlashSkill(skill, idx=0, source="fallback") {
   const fallback=SLASH_FALLBACK_PROMPTS[idx % SLASH_FALLBACK_PROMPTS.length];
   const rawLabel=skill?.name || skill?.label || fallback.label;
+  const recommendScore=Number(skill?.recommend_score ?? skill?.rank_score ?? skill?.weight ?? 0);
   return {
     label:String(rawLabel).replace(/^请/, "").slice(0, 22),
     prompt:skill?.content || skill?.prompt || fallback.prompt,
     skill_key:skill?.skill_key || skill?.skillKey || fallback.skill_key,
     source,
+    recommend_score:Number.isFinite(recommendScore) ? recommendScore : 0,
     raw:skill || null,
   };
 }

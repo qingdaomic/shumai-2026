@@ -12,7 +12,10 @@ const ALLOWED_EVENTS = new Set(['impression', 'click', 'ai_used', 'helpful', 'no
 // POST /api/skills/recommend — 推荐 3 条“你可以这样问”
 router.post('/recommend', authMiddleware, async (req, res) => {
   try {
-    const input = normalizeRecommendInput(req.body || {});
+    const input = normalizeRecommendInput({
+      ...(req.body || {}),
+      user_id: req.user.id,
+    });
     const result = await recommendPromptSkills(input);
     res.json({
       skills: result.skills.map(toClientSkill),
@@ -70,6 +73,7 @@ function toClientSkill(skill) {
     example_questions: skill.example_questions,
     weight: skill.weight,
     version: skill.version,
+    recommend_score: skill.recommend_score,
   };
 }
 

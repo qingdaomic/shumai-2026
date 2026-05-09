@@ -17,24 +17,33 @@ export async function recommendPromptSkills(input = {}) {
   try {
     const dbSkills = await fetchDbSkills(params);
     if (dbSkills.length > 0) {
+      let eventStats = new Map();
+      try {
+        eventStats = await fetchSkillEventStats(dbSkills.map(skill => skill.id), params.user_id);
+      } catch (err) {
+        console.warn('SKE skill stats fallback:', err.message);
+      }
+      const rankedSkills = rankSkills(dbSkills, params, eventStats).slice(0, params.limit);
       return {
-        skills: rankSkills(dbSkills, params).slice(0, params.limit),
+        skills: rankedSkills.map(({ skill, score }) => decorateRecommendedSkill(skill, score)),
         source: 'db',
-        reason: buildReason(params, 'db'),
+        reason: buildReason(params, 'db', rankedSkills.some(item => item.signal && item.signal.events > 0)),
       };
     }
   } catch (err) {
     const seedSkills = await loadSeedSkills();
+    const rankedSkills = rankSkills(seedSkills, params).slice(0, params.limit);
     return {
-      skills: rankSkills(seedSkills, params).slice(0, params.limit),
+      skills: rankedSkills.map(({ skill, score }) => decorateRecommendedSkill(skill, score)),
       source: 'seed',
       reason: `数据库不可用或尚未迁移，已使用种子 Skill 降级推荐：${safeMessage(err)}`,
     };
   }
 
   const seedSkills = await loadSeedSkills();
+  const rankedSkills = rankSkills(seedSkills, params).slice(0, params.limit);
   return {
-    skills: rankSkills(seedSkills, params).slice(0, params.limit),
+    skills: rankedSkills.map(({ skill, score }) => decorateRecommendedSkill(skill, score)),
     source: 'seed',
     reason: buildReason(params, 'seed'),
   };
@@ -90,6 +99,7 @@ export async function recordPromptSkillEvent(input = {}) {
 
 export function normalizeRecommendInput(input = {}) {
   return {
+    user_id: input.user_id || input.userId || null,
     topic_code: cleanText(input.topic_code || input.topicCode, 80),
     method_code: cleanText(input.method_code || input.methodCode, 80),
     question_type: cleanText(input.question_type || input.questionType, 80),
@@ -148,6 +158,38 @@ async function fetchDbSkills(params) {
   return result.rows.map(normalizeDbSkill);
 }
 
+async function fetchSkillEventStats(skillIds = [], userId = null) {
+  const ids = skillIds.map(id => Number(id)).filter(id => Number.isFinite(id) && id > 0);
+  if (!ids.length) return new Map();
+
+  const result = await pool.query(
+    `SELECT prompt_skill_id,
+            COUNT(*)::int AS events,
+            COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+            COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks,
+            COUNT(*) FILTER (WHERE event_type = 'ai_used')::int AS ai_used,
+            COUNT(*) FILTER (WHERE event_type = 'helpful')::int AS helpful,
+            COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS not_helpful,
+            COUNT(*) FILTER (WHERE user_id = $2 AND event_type = 'impression')::int AS user_impressions,
+            COUNT(*) FILTER (WHERE user_id = $2 AND event_type = 'click')::int AS user_clicks,
+            COUNT(*) FILTER (WHERE user_id = $2 AND event_type = 'ai_used')::int AS user_ai_used,
+            COUNT(*) FILTER (WHERE user_id = $2 AND event_type = 'helpful')::int AS user_helpful,
+            COUNT(*) FILTER (WHERE user_id = $2 AND event_type = 'not_helpful')::int AS user_not_helpful,
+            MAX(created_at) AS last_event_at
+     FROM prompt_skill_events
+     WHERE prompt_skill_id = ANY($1)
+       AND created_at >= NOW() - INTERVAL '90 days'
+     GROUP BY prompt_skill_id`,
+    [ids, Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null]
+  );
+
+  const statsMap = new Map();
+  for (const row of result.rows) {
+    statsMap.set(Number(row.prompt_skill_id), normalizeSkillEventStats(row));
+  }
+  return statsMap;
+}
+
 async function resolveSkillId(event) {
   if (event.skill_id) return Number(event.skill_id);
   if (!event.skill_key) return null;
@@ -166,21 +208,23 @@ async function loadSeedSkills() {
   return seedCache;
 }
 
-export function rankSkills(skills, params) {
+export function rankSkills(skills, params, eventStats = new Map()) {
   const seen = new Set();
   return skills
     .filter(skill => skill.status === 'active')
-    .map(skill => ({ skill, score: scoreSkill(skill, params) }))
+    .map(skill => {
+      const signal = eventStats.get(skill.id) || null;
+      return { skill, score: scoreSkill(skill, params, signal), signal };
+    })
     .sort((a, b) => b.score - a.score || String(a.skill.skill_key).localeCompare(String(b.skill.skill_key)))
-    .map(item => item.skill)
-    .filter(skill => {
-      if (seen.has(skill.skill_key)) return false;
-      seen.add(skill.skill_key);
+    .filter(item => {
+      if (seen.has(item.skill.skill_key)) return false;
+      seen.add(item.skill.skill_key);
       return true;
     });
 }
 
-function scoreSkill(skill, params) {
+function scoreSkill(skill, params, signal = null) {
   let score = Number(skill.weight || 0.7) * 10;
   if (skill.subject === params.subject) score += 3;
   if (skill.stage === params.stage) score += 2;
@@ -193,7 +237,39 @@ function scoreSkill(skill, params) {
   if (params.error_type && skill.trigger_tags?.some(tag => includesFolded(tag, params.error_type))) score += 5;
   if (params.student_state && skill.trigger_tags?.some(tag => includesFolded(tag, params.student_state))) score += 4;
   score += stateTypeBonus(skill, params.student_state);
+  score += historicalSignalBonus(signal);
   return score;
+}
+
+function historicalSignalBonus(signal) {
+  if (!signal || !signal.events) return 0;
+
+  const impressions = Math.max(Number(signal.impressions || 0), 1);
+  const userImpressions = Math.max(Number(signal.user_impressions || 0), 1);
+
+  const globalQuality = (
+    (Number(signal.clicks || 0) * 0.6)
+    + (Number(signal.ai_used || 0) * 1.2)
+    + (Number(signal.helpful || 0) * 3.0)
+    - (Number(signal.not_helpful || 0) * 4.0)
+  ) / impressions * 5.5;
+
+  const userQuality = (
+    (Number(signal.user_clicks || 0) * 0.8)
+    + (Number(signal.user_ai_used || 0) * 1.4)
+    + (Number(signal.user_helpful || 0) * 3.4)
+    - (Number(signal.user_not_helpful || 0) * 4.8)
+  ) / userImpressions * 7.0;
+
+  const recencyBoost = recentActivityBonus(signal.last_event_at);
+  return clampNumber(globalQuality + userQuality + recencyBoost, -12, 18);
+}
+
+function recentActivityBonus(lastEventAt) {
+  if (!lastEventAt) return 0;
+  const days = (Date.now() - new Date(lastEventAt).getTime()) / 86400000;
+  if (!Number.isFinite(days) || days < 0) return 0;
+  return Math.max(0, 3.2 - (days * 0.08));
 }
 
 function stateTypeBonus(skill, studentState) {
@@ -205,13 +281,38 @@ function stateTypeBonus(skill, studentState) {
   return 0;
 }
 
-function buildReason(params, source) {
+function buildReason(params, source, hasHistory = false) {
   const parts = [];
   if (params.topic_code) parts.push(`知识点 ${params.topic_code}`);
   if (params.method_code) parts.push(`方法 ${params.method_code}`);
   if (params.question_type) parts.push(`题型 ${params.question_type}`);
   parts.push(`场景 ${params.scene}`);
-  return `${source === 'db' ? '已从数据库' : '已从种子 Skill'}按${parts.join(' / ')}推荐`;
+  const historyNote = hasHistory ? '，已结合近 90 天点击与反馈回流' : '';
+  return `${source === 'db' ? '已从数据库' : '已从种子 Skill'}按${parts.join(' / ')}推荐${historyNote}`;
+}
+
+function decorateRecommendedSkill(skill, score) {
+  return {
+    ...skill,
+    recommend_score: Number(score || 0),
+  };
+}
+
+function normalizeSkillEventStats(row) {
+  return {
+    events: Number(row.events || 0),
+    impressions: Number(row.impressions || 0),
+    clicks: Number(row.clicks || 0),
+    ai_used: Number(row.ai_used || 0),
+    helpful: Number(row.helpful || 0),
+    not_helpful: Number(row.not_helpful || 0),
+    user_impressions: Number(row.user_impressions || 0),
+    user_clicks: Number(row.user_clicks || 0),
+    user_ai_used: Number(row.user_ai_used || 0),
+    user_helpful: Number(row.user_helpful || 0),
+    user_not_helpful: Number(row.user_not_helpful || 0),
+    last_event_at: row.last_event_at || null,
+  };
 }
 
 function normalizeDbSkill(row) {
@@ -272,6 +373,11 @@ function clampLimit(value) {
   const n = Number(value || DEFAULT_LIMIT);
   if (!Number.isFinite(n)) return DEFAULT_LIMIT;
   return Math.max(1, Math.min(MAX_LIMIT, Math.round(n)));
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(min, Math.min(max, value));
 }
 
 function cleanText(value, max = 120) {
