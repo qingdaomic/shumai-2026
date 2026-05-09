@@ -10081,6 +10081,7 @@ function PageAdmin({onNav}) {
   const [skills,setSkills]=useState([]);
   const [skillSummary,setSkillSummary]=useState(null);
   const [skillFilters,setSkillFilters]=useState({search:"",type:"all",status:"all",scene:"all",subject:"all",source:"all"});
+  const [petRewrite,setPetRewrite]=useState(null);
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
   // D6 题库状态
@@ -10128,6 +10129,28 @@ function PageAdmin({onNav}) {
         status:item.status || "active",
       });
       setMsg("✅ 已调低学伴 Skill 权重");
+      loadSkills(skillFilters);
+      setTimeout(()=>setMsg(""),2200);
+    }catch(e){
+      setMsg("❌ "+e.message);
+    }
+  };
+
+  const savePetSkillRewrite=async()=>{
+    if(!petRewrite?.item?.id) return;
+    const content=String(petRewrite.content || "").trim();
+    if(!content) {
+      setMsg("❌ 改写内容不能为空");
+      return;
+    }
+    try{
+      await api("PUT",`/skills/${petRewrite.item.id}`,{
+        content,
+        weight:petRewrite.item.weight,
+        status:petRewrite.item.status || "active",
+      });
+      setMsg("✅ 已保存 Skill 改写内容");
+      setPetRewrite(null);
       loadSkills(skillFilters);
       setTimeout(()=>setMsg(""),2200);
     }catch(e){
@@ -10421,6 +10444,14 @@ function PageAdmin({onNav}) {
               source:"learning_pet",
             }))}
             onAdjust={adjustPetSkillWeight}
+            onRewrite={(item)=>setPetRewrite({item,content:item.content || ""})}
+          />
+
+          <PetSkillRewritePanel
+            draft={petRewrite}
+            onChange={content=>setPetRewrite(prev=>prev?{...prev,content}:prev)}
+            onCancel={()=>setPetRewrite(null)}
+            onSave={savePetSkillRewrite}
           />
 
           <div style={{overflowX:"auto"}}>
@@ -10919,7 +10950,7 @@ function petRecommendationMeta(value) {
   return map[value] || map.keep_observing;
 }
 
-function PetSkillWatchlist({items=[],onFocus,onAdjust}) {
+function PetSkillWatchlist({items=[],onFocus,onAdjust,onRewrite}) {
   if(!items.length) {
     return (
       <div style={{padding:"10px 12px",borderRadius:10,background:C.geo+"0d",border:`1px solid ${C.geo}24`,
@@ -10987,10 +11018,50 @@ function PetSkillWatchlist({items=[],onFocus,onAdjust}) {
                     确认降权 20%
                   </button>
                 )}
+                {item.pet_recommendation==="rewrite_prompt"&&(
+                  <button onClick={()=>onRewrite?.(item)}
+                    style={{padding:"4px 8px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:900,
+                      background:C.sta+"12",color:C.sta,border:`1px solid ${C.sta}30`}}>
+                    人工改写
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function PetSkillRewritePanel({draft,onChange,onCancel,onSave}) {
+  if(!draft?.item) return null;
+  return (
+    <div style={{padding:12,borderRadius:12,background:C.sta+"0d",border:`1px solid ${C.sta}28`,marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
+        <div>
+          <div style={{fontSize:14,color:C.sta,fontWeight:950}}>人工改写 Skill</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:3,overflowWrap:"anywhere"}}>
+            {draft.item.name} · {draft.item.skill_key}
+          </div>
+        </div>
+        <button onClick={onCancel}
+          style={{padding:"4px 8px",borderRadius:8,cursor:"pointer",fontSize:12,
+            background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
+          取消
+        </button>
+      </div>
+      <textarea value={draft.content || ""} onChange={e=>onChange?.(e.target.value)}
+        style={{width:"100%",minHeight:120,boxSizing:"border-box",padding:10,borderRadius:10,
+          background:C.s1,border:`1px solid ${C.border}`,color:C.text,fontSize:13,lineHeight:1.6,
+          outline:"none",resize:"vertical"}}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginTop:8}}>
+        <span style={{fontSize:11,color:C.dim}}>保存前请确认它仍然是给学生的下一步扶手，而不是完整答案。</span>
+        <button onClick={onSave}
+          style={{padding:"6px 12px",borderRadius:9,cursor:"pointer",fontSize:12,fontWeight:900,
+            background:C.sta+"18",color:C.sta,border:`1px solid ${C.sta}35`,whiteSpace:"nowrap"}}>
+          保存改写
+        </button>
       </div>
     </div>
   );

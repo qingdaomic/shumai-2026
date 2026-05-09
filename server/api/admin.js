@@ -245,7 +245,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
           AND meta->>'entry' = 'learning_pet'
         GROUP BY prompt_skill_id
       )
-      SELECT s.id, s.skill_key, s.name, s.type, s.scene, s.topic_code, s.weight, s.status,
+      SELECT s.id, s.skill_key, s.name, s.type, s.scene, s.topic_code, s.content, s.weight, s.status,
              ps.pet_events, ps.pet_clicks, ps.pet_ai_used, ps.pet_helpful, ps.pet_not_helpful,
              ps.question_coach_events, ps.pet_panel_events, ps.ai_float_events,
              ps.ai_float_feedback_events, ps.unknown_entry_events,
@@ -362,7 +362,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
   }
 });
 
-// PUT /api/admin/skills/:id — 修改 Skill 权重 / 状态
+// PUT /api/admin/skills/:id — 修改 Skill 权重 / 状态 / 内容
 router.put('/skills/:id', authMiddleware, adminGuard, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -370,6 +370,7 @@ router.put('/skills/:id', authMiddleware, adminGuard, async (req, res) => {
 
     const weightInput = req.body?.weight;
     const statusInput = String(req.body?.status || '').trim();
+    const hasContentInput = Object.prototype.hasOwnProperty.call(req.body || {}, 'content');
     const updates = [];
     const params = [];
 
@@ -388,7 +389,15 @@ router.put('/skills/:id', authMiddleware, adminGuard, async (req, res) => {
       updates.push(`status = $${params.length}`);
     }
 
-    if (updates.length === 0) return res.status(400).json({ error: '请提供 weight 或 status' });
+    if (hasContentInput) {
+      const content = String(req.body?.content || '').trim();
+      if (!content) return res.status(400).json({ error: 'Skill 内容不能为空' });
+      if (content.length > 4000) return res.status(400).json({ error: 'Skill 内容过长' });
+      params.push(content);
+      updates.push(`content = $${params.length}`);
+    }
+
+    if (updates.length === 0) return res.status(400).json({ error: '请提供 weight、status 或 content' });
 
     params.push(id);
     const result = await pool.query(
