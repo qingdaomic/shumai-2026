@@ -265,6 +265,7 @@ V4 目标：
 - [x] **V4.85** 服务器干净 release 目录实操验证：在 `/opt/shumai-releases/` clone 最新 main，完成前端构建、后端依赖与语法检查，不部署不切换
 - [x] **V4.86** 服务器 3002 旁路后端演练：基于干净 release 临时启动 `shumai-api-v4.86`，health 通过后 stop/delete，不保存 PM2 不切换线上
 - [x] **V4.87** 数据库备份与 migration 预检：完成 PostgreSQL 备份，确认 `admin_operation_logs` 未存在，发现线上库缺少 `prompt_skills`
+- [x] **V4.88** 后台操作日志 migration 执行：基于 V4.87 备份创建 `admin_operation_logs`，验证 14 列、6 索引、6 约束与幂等性
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
