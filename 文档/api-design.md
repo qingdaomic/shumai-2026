@@ -779,6 +779,45 @@
 
 ## 十三、前端 service 层对接说明
 
+### 12.7 SKE AI Skill 模型路由
+
+`POST /api/ai/skill` — 使用教学 Skill 生成回答。
+
+V4.51 后，响应会返回后端内部模型路由信息，但前台不展示模型选择：
+
+```json
+{
+  "ok": true,
+  "answer": "先看题干里的关键条件...",
+  "skill": { "skill_key": "math_hint_first_step_001" },
+  "aiRoute": {
+    "tier": "fast",
+    "model": "deepseek-chat",
+    "provider": "deepseek",
+    "points": 1,
+    "visibleName": "极速答疑",
+    "reason": "极速答疑：scene=stuck_before_solution / plan=free"
+  },
+  "points": {
+    "plan": "free",
+    "includedDailyStandardCalls": 3,
+    "estimatedPoints": {
+      "fast": 1,
+      "standard": 1,
+      "deep": 3,
+      "review": 2
+    }
+  },
+  "fallback": false
+}
+```
+
+说明：
+
+- `aiRoute` 是后台运营与后续计费口径，不是学生端模型选择器。
+- 当前只返回点数预估，不真实扣点。
+- 深度模型、质检模型可通过环境变量配置，默认仍使用 `deepseek-chat`。
+
 前端 service 层应以本文档为契约，在测试版阶段用本地数据模拟相同的请求/响应结构。
 
 建议各 service 统一封装方式：

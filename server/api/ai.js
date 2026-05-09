@@ -10,6 +10,7 @@ import {
   buildStudentContext,
 } from '../prompts/tutor.js';
 import { buildAiSkillFallback, prepareAiSkillTutoring } from '../services/ai-skill.js';
+import { buildAiPointsPreview, chooseAiRoute } from '../services/ai-routing.js';
 
 const router = Router();
 
@@ -35,6 +36,19 @@ async function getStudentProfile(userId) {
     wrongCount: parseInt(wrongRes.rows[0]?.cnt) || 0,
     streakDays: parseInt(checkinRes.rows[0]?.days) || 0,
   };
+}
+
+async function getUserPlan(userId) {
+  try {
+    const result = await pool.query('SELECT value FROM system_config WHERE key = $1', [`sub_${userId}`]);
+    const sub = result.rows[0]?.value;
+    if (!sub) return 'free';
+    const value = typeof sub === 'string' ? JSON.parse(sub) : sub;
+    if (value.expiresAt && new Date(value.expiresAt) < new Date()) return 'free';
+    return value.plan || 'free';
+  } catch {
+    return 'free';
+  }
 }
 
 // POST /api/ai/explain — 单题 AI 讲解
@@ -199,6 +213,12 @@ router.post('/skill', authMiddleware, async (req, res) => {
     const profile = await getStudentProfile(req.user.id);
     const skillInput = { ...req.body, question: questionText };
     const prepared = await prepareAiSkillTutoring(skillInput, profile);
+    const userPlan = await getUserPlan(req.user.id);
+    const aiRoute = chooseAiRoute({
+      ...skillInput,
+      skill: prepared.skill,
+      plan: userPlan,
+    });
 
     if (!process.env.DEEPSEEK_API_KEY) {
       return res.json({
@@ -211,12 +231,14 @@ router.post('/skill', authMiddleware, async (req, res) => {
         skill: prepared.skill,
         source: prepared.source,
         reason: prepared.reason,
+        aiRoute,
+        points: buildAiPointsPreview(userPlan),
         fallback: true,
       });
     }
 
     const completion = await deepseek.chat.completions.create({
-      model: 'deepseek-chat',
+      model: aiRoute.model,
       messages: [
         { role: 'system', content: prepared.systemPrompt },
         { role: 'user', content: prepared.userPrompt },
@@ -231,6 +253,8 @@ router.post('/skill', authMiddleware, async (req, res) => {
       skill: prepared.skill,
       source: prepared.source,
       reason: prepared.reason,
+      aiRoute,
+      points: buildAiPointsPreview(userPlan),
       fallback: false,
     });
   } catch (err) {
