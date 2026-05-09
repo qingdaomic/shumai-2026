@@ -11544,6 +11544,7 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
 
   const doAsk = async (userMsg) => {
     setLoading(true);
+    setLearningPetMode(PET_MODES.thinking, "我在帮你理思路");
     try {
       const askText=userMsg || "请讲解这道题，重点讲清楚题眼、思路入口和易错点";
       const result = await askTutorAI({
@@ -11563,7 +11564,11 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
         });
       }
       setHistory(prev=>[...prev,{r:"user",t:askText},{r:"ai",t:result}]);
-    } catch(e) { setText("⚠️ AI暂时不在线，请稍后重试"); }
+      setLearningPetMode(PET_MODES.review, "回答好了，适合复盘一下");
+    } catch(e) {
+      setText("⚠️ AI暂时不在线，请稍后重试");
+      setLearningPetMode(PET_MODES.idle, "学长暂时没接上，先稳住");
+    }
     setLoading(false);
   };
 
@@ -11601,6 +11606,7 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
     setFollowUp("");
     stopVoice();
     setLoading(true);
+    setLearningPetMode(PET_MODES.thinking, "我在按这条问法找突破口");
     activeSkillItemRef.current=item || null;
     aiUsedRef.current=false;
     const askText=item?.label || item?.prompt || "先提醒我第一步";
@@ -11617,8 +11623,10 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
         });
       }
       setHistory(prev=>[...prev,{r:"ai",t:result}]);
+      setLearningPetMode(PET_MODES.review, "这一步可以回看复盘");
     } catch(e) {
       setText("学长这一步没接上，你可以再点一次。");
+      setLearningPetMode(PET_MODES.idle, "这次没接上，换个问法也可以");
     }
     setLoading(false);
   };
@@ -11811,6 +11819,13 @@ function awardLearningPetXp({type, xp, label, id, mode=PET_MODES.happy, oncePerD
   }));
 }
 
+function setLearningPetMode(mode, label="") {
+  if (!mode) return;
+  window.dispatchEvent(new CustomEvent("shumai-pet-mode", {
+    detail: { mode, label, at: Date.now() },
+  }));
+}
+
 function petLevel(xp) {
   return Math.max(1, Math.floor(Number(xp || 0) / 80) + 1);
 }
@@ -11890,6 +11905,25 @@ function LearningPet() {
     return()=>window.removeEventListener("shumai-pet-xp", onReward);
   },[]);
 
+  useEffect(()=>{
+    const onMode=(e)=>{
+      const detail=e.detail || {};
+      const mode=detail.mode;
+      if(!PET_MODE_COPY[mode]) return;
+      setPet(prev=>({
+        ...prev,
+        mode,
+        lastReward: detail.label ? {
+          xp: 0,
+          label: detail.label,
+          at: detail.at || Date.now(),
+        } : prev.lastReward,
+      }));
+    };
+    window.addEventListener("shumai-pet-mode", onMode);
+    return()=>window.removeEventListener("shumai-pet-mode", onMode);
+  },[]);
+
   const setMode=(mode)=>setPet(prev=>({...prev,mode}));
   const switchSpecies=()=>setPet(prev=>({...prev,species:prev.species==="cat"?"dog":"cat"}));
 
@@ -11930,7 +11964,7 @@ function LearningPet() {
         {pet.lastReward&&(
           <div style={{padding:"7px 9px",borderRadius:9,background:C.ok+"10",border:`1px solid ${C.ok}24`,
             color:C.ok,fontSize:12,fontWeight:850,marginBottom:10,lineHeight:1.5}}>
-            +{pet.lastReward.xp} XP · {pet.lastReward.label}
+            {pet.lastReward.xp>0?`+${pet.lastReward.xp} XP · `:""}{pet.lastReward.label}
           </div>
         )}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6}}>
@@ -12020,6 +12054,7 @@ function AIFloat({context}) {
     setInput("");
     setMsgs(prev=>[...prev,{r:"user",t:userMsg}]);
     setLoading(true);
+    setLearningPetMode(PET_MODES.thinking, "我在帮你整理这个问题");
     try {
       const ctxHint = context?.topicName
         ? `学生当前正在看「${context.topicName}」知识点。`
@@ -12032,8 +12067,10 @@ function AIFloat({context}) {
       const hist = msgs.slice(-10);
       const result = await callAI(system, userMsg, hist);
       setMsgs(prev=>[...prev,{r:"ai",t:result}]);
+      setLearningPetMode(PET_MODES.review, "回答好了，可以挑一句复盘");
     } catch(e) {
       setMsgs(prev=>[...prev,{r:"ai",t:"⚠️ 网络异常，请稍后重试"}]);
+      setLearningPetMode(PET_MODES.idle, "网络没接上，先别急");
     }
     setLoading(false);
   };
