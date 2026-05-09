@@ -252,6 +252,7 @@ V4 目标：
 - [x] **V4.72** SKE/PET 后台操作日志持久化方案：设计 `admin_operation_logs` 表、API 草案、前端降级策略和上线边界
 - [x] **V4.73** SKE/PET 后台操作日志 migration 草案：新增独立 `admin_operation_logs` migration，不执行 SQL，不改 `server/schema.sql`
 - [x] **V4.74** SKE/PET 后台操作日志 API 草案：新增写入 / 读取接口，数据库未迁移时安全返回 `stored:false`
+- [x] **V4.75** SKE/PET 后台操作日志前端接入：最近人工操作持久化优先，本地临时记录降级
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`

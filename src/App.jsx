@@ -10083,6 +10083,7 @@ function PageAdmin({onNav}) {
   const [skillFilters,setSkillFilters]=useState({search:"",type:"all",status:"all",scene:"all",subject:"all",source:"all"});
   const [petRewrite,setPetRewrite]=useState(null);
   const [skillOps,setSkillOps]=useState([]);
+  const [skillOpsMeta,setSkillOpsMeta]=useState({stored:false,source:"local"});
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
   // D6 题库状态
@@ -10118,8 +10119,46 @@ function PageAdmin({onNav}) {
     }catch(e){setMsg("❌ "+e.message);}setLoading(false);
   };
 
-  const recordSkillOp=(op)=>{
+  const formatOperationLog=(item)=>({
+    at:item.created_at ? new Date(item.created_at).getTime() : Date.now(),
+    type:item.action==="skill_weight_adjust"?"降权":item.action==="skill_rewrite"?"改写":"操作",
+    skill:item.target_name || item.target_key || "未知 Skill",
+    detail:item.action==="skill_weight_adjust"
+      ? `权重 ${item.before_value?.weight ?? "-"} → ${item.after_value?.weight ?? "-"}`
+      : item.action==="skill_rewrite"
+        ? `内容 ${item.before_value?.contentLength ?? "-"} 字 → ${item.after_value?.contentLength ?? "-"} 字`
+        : item.reason || "已记录",
+    stored:true,
+  });
+
+  const loadOperationLogs=async()=>{
+    try{
+      const data=await api("GET","/operation-logs?targetType=prompt_skill&limit=6");
+      if(data?.stored) {
+        setSkillOps((data.items||[]).map(formatOperationLog));
+        setSkillOpsMeta({stored:true,source:"remote"});
+      } else {
+        setSkillOpsMeta({stored:false,source:"local"});
+      }
+    }catch(e){
+      setSkillOpsMeta({stored:false,source:"local"});
+    }
+  };
+
+  const recordSkillOp=(op, logPayload)=>{
     setSkillOps(prev=>[{...op,at:Date.now()},...prev].slice(0,6));
+    if(logPayload) {
+      api("POST","/operation-logs",logPayload)
+        .then(data=>{
+          if(data?.stored) {
+            setSkillOpsMeta({stored:true,source:"remote"});
+            loadOperationLogs();
+          } else {
+            setSkillOpsMeta({stored:false,source:"local"});
+          }
+        })
+        .catch(()=>setSkillOpsMeta({stored:false,source:"local"}));
+    }
   };
 
   const adjustPetSkillWeight=async(item)=>{
@@ -10137,6 +10176,16 @@ function PageAdmin({onNav}) {
         type:"降权",
         skill:item.name || item.skill_key,
         detail:`权重 ${current.toFixed(2)} → ${next.toFixed(2)}`,
+      },{
+        action:"skill_weight_adjust",
+        targetType:"prompt_skill",
+        targetId:item.id,
+        targetKey:item.skill_key,
+        targetName:item.name,
+        beforeValue:{weight:current},
+        afterValue:{weight:next},
+        reason:item.pet_recommendation_reason || "后台观察清单建议降权",
+        source:"pet_watchlist",
       });
       setMsg("✅ 已调低学伴 Skill 权重");
       loadSkills(skillFilters);
@@ -10164,6 +10213,16 @@ function PageAdmin({onNav}) {
         type:"改写",
         skill:petRewrite.item.name || petRewrite.item.skill_key,
         detail:`内容 ${beforeText.length} 字 → ${content.length} 字`,
+      },{
+        action:"skill_rewrite",
+        targetType:"prompt_skill",
+        targetId:petRewrite.item.id,
+        targetKey:petRewrite.item.skill_key,
+        targetName:petRewrite.item.name,
+        beforeValue:{contentLength:beforeText.length,contentPreview:beforeText.slice(0,120)},
+        afterValue:{contentLength:content.length,contentPreview:content.slice(0,120)},
+        reason:petRewrite.item.pet_recommendation_reason || "后台观察清单建议改写",
+        source:"pet_watchlist",
       });
       setMsg("✅ 已保存 Skill 改写内容");
       setPetRewrite(null);
@@ -10179,7 +10238,7 @@ function PageAdmin({onNav}) {
     else if(tab==="users") loadUsers();
     else if(tab==="stats") loadStats();
     else if(tab==="resources") loadResources();
-    else if(tab==="skills") loadSkills();
+    else if(tab==="skills") { loadSkills(); loadOperationLogs(); }
   },[tab]);
 
   useEffect(()=>{
@@ -10463,7 +10522,7 @@ function PageAdmin({onNav}) {
             onRewrite={(item)=>setPetRewrite({item,content:item.content || "",originalContent:item.content || ""})}
           />
 
-          <SkillOperationTips ops={skillOps}/>
+          <SkillOperationTips ops={skillOps} meta={skillOpsMeta} onRefresh={loadOperationLogs}/>
 
           <PetSkillRewritePanel
             draft={petRewrite}
@@ -11102,15 +11161,27 @@ function PetSkillRewritePanel({draft,onChange,onCancel,onSave}) {
   );
 }
 
-function SkillOperationTips({ops=[]}) {
+function SkillOperationTips({ops=[],meta={},onRefresh}) {
   return (
     <div style={{padding:12,borderRadius:12,background:C.alg+"0d",border:`1px solid ${C.alg}24`,marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:8}}>
         <div>
           <div style={{fontSize:14,color:C.alg,fontWeight:950}}>最近人工操作</div>
-          <div style={{fontSize:12,color:C.muted,marginTop:3}}>本页临时记录，用于确认刚才做了什么；刷新后清空。</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:3}}>
+            {meta.stored?"已读取持久化日志；接口不可用时会自动退回本页临时记录。":"当前使用本页临时记录；数据库迁移后会自动优先读取持久化日志。"}
+          </div>
         </div>
-        <span style={{fontSize:12,color:C.alg,fontWeight:900}}>{ops.length} 条</span>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <span style={{fontSize:12,color:meta.stored?C.ok:C.sta,fontWeight:900,whiteSpace:"nowrap"}}>
+            {meta.stored?"持久化":"本地降级"}
+          </span>
+          <span style={{fontSize:12,color:C.alg,fontWeight:900,whiteSpace:"nowrap"}}>{ops.length} 条</span>
+          <button onClick={onRefresh}
+            style={{padding:"3px 7px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:850,
+              background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
+            刷新
+          </button>
+        </div>
       </div>
       {ops.length===0?(
         <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>
