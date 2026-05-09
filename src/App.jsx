@@ -527,6 +527,422 @@ const SLASH_FALLBACK_PROMPTS = [
   {label:"换一道同类题练一下", prompt:"换一道同类题练一下，先只给题目。", skill_key:"local_slash_same_type"},
 ];
 
+const SHUMAI_SEARCH_WRONG_CAUSES = [
+  {id:"sign", name:"符号与运算顺序", desc:"负号、绝对值、乘方和去括号最容易造成第一步错误。", keywords:"符号 负号 运算 顺序 绝对值 乘方 去括号 有理数"},
+  {id:"formula", name:"公式套用不稳", desc:"完全平方、平方差、求根公式、面积公式等需要先识别适用条件。", keywords:"公式 完全平方 平方差 求根 面积 周长 套用"},
+  {id:"condition", name:"条件漏读", desc:"题眼常藏在取值范围、平行、垂直、切线、中点、相似条件里。", keywords:"题眼 条件 漏读 范围 平行 垂直 切线 中点 相似"},
+  {id:"model", name:"建模入口找不到", desc:"应用题和综合题先把文字条件翻译成方程、函数、图形或概率模型。", keywords:"建模 应用题 方程 函数 图形 概率 文字题"},
+  {id:"proof", name:"证明路径断开", desc:"几何证明先找已知到结论之间的桥，常用全等、相似、平行线和圆。", keywords:"证明 几何 全等 相似 平行 圆 辅助线"},
+];
+
+const SEARCH_GROUP_LABELS = {
+  top:"最相关",
+  topic:"知识点",
+  question:"题目",
+  method:"方法",
+  exam:"真题",
+  ai:"AI 问法",
+};
+
+const SEARCH_GROUP_COLORS = {
+  top:C.geo,
+  topic:C.alg,
+  question:C.geo,
+  method:C.purple,
+  exam:C.gold,
+  ai:C.cyan,
+};
+
+function normalizeSearchText(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function compactSearchText(parts) {
+  return parts.flat().filter(Boolean).map(x=>String(x)).join(" ");
+}
+
+function buildShuMaiSearchIndex() {
+  const entries=[];
+
+  TOPICS.forEach(t=>{
+    const domain=DOM[t.domain] || DOM.algebra;
+    entries.push({
+      id:`topic-${t.id}`,
+      group:"topic",
+      type:"topic",
+      title:t.name,
+      eyebrow:domain.name,
+      desc:`${t.semester} · 考频 ${t.freq || 0}% · ${t.tips || "打开知识点教练场"}`,
+      action:"去知识点",
+      topicId:t.id,
+      color:domain.color,
+      text:compactSearchText([t.name,t.id,t.semester,t.chapter,domain.name,t.keys,t.tips,t.fivePoints,t.methods]),
+    });
+  });
+
+  Object.entries(BASICS_BY_TOPIC).forEach(([topicId,qs])=>{
+    const topic=TOPIC_MAP[topicId] || TOPICS.find(t=>t.id===topicId);
+    (qs || []).forEach(q=>{
+      entries.push({
+        id:`basic-${q.id}`,
+        group:"question",
+        type:"basic",
+        title:q.content,
+        eyebrow:`基础题 · ${topic?.name || topicId}`,
+        desc:`难度 ${q.diff || 1} · 易错点：${q.error || "基础概念和步骤"}`,
+        action:"去练基础题",
+        topicId,
+        qid:q.id,
+        color:C.geo,
+        text:compactSearchText([q.id,q.content,q.answer,q.error,q.sol,topic?.name,topicId]),
+      });
+    });
+  });
+
+  EXAM_QS.forEach(q=>{
+    const topic=TOPIC_MAP[q.topic];
+    entries.push({
+      id:`exam-${q.id}`,
+      group:"exam",
+      type:"exam",
+      title:q.content,
+      eyebrow:`${q.city || "中考"} · ${q.yr}年 第${q.no}题`,
+      desc:`${topic?.name || q.topic} · ${q.score || 0}分 · 易错点：${q.error || "读题与步骤"}`,
+      action:"去真题教练场",
+      topicId:q.topic,
+      qid:q.id,
+      year:q.yr,
+      city:q.city,
+      color:C.gold,
+      text:compactSearchText([q.content,q.answer,q.error,q.sol,q.yr,q.city,q.no,q.type,topic?.name,q.topic,q.subTopics,q.methods]),
+    });
+  });
+
+  METHODS.forEach(m=>{
+    entries.push({
+      id:`method-${m.id}`,
+      group:"method",
+      type:"method",
+      title:m.name,
+      eyebrow:`${m.cat}方法`,
+      desc:m.desc,
+      action:"看方法",
+      methodId:m.id,
+      topicId:m.topics?.[0] || "",
+      color:C.purple,
+      text:compactSearchText([m.id,m.name,m.cat,m.desc,m.example,m.topics,m.topics?.map(tid=>TOPIC_MAP[tid]?.name)]),
+    });
+  });
+
+  SHUMAI_SEARCH_WRONG_CAUSES.forEach(w=>{
+    entries.push({
+      id:`wrong-${w.id}`,
+      group:"question",
+      type:"wrong",
+      title:w.name,
+      eyebrow:"错因",
+      desc:w.desc,
+      action:"看错因修复",
+      color:C.red,
+      text:compactSearchText([w.name,w.desc,w.keywords]),
+    });
+  });
+
+  SLASH_FALLBACK_PROMPTS.forEach(p=>{
+    entries.push({
+      id:`ai-${p.skill_key}`,
+      group:"ai",
+      type:"ai",
+      title:p.label,
+      eyebrow:"AI 问法",
+      desc:p.prompt,
+      action:"预留到题目 AI",
+      color:C.cyan,
+      text:compactSearchText([p.label,p.prompt,p.skill_key,"提问 斜杠 AI 问法 提示"]),
+    });
+  });
+
+  return entries.map(entry=>({...entry, searchText:normalizeSearchText([entry.title, entry.eyebrow, entry.desc, entry.text].join(" "))}));
+}
+
+const SHUMAI_SEARCH_INDEX = buildShuMaiSearchIndex();
+
+function searchShuMaiIndex(query, limitPerGroup=4) {
+  const q=normalizeSearchText(query);
+  if(!q) return {top:[], groups:{topic:[],question:[],method:[],exam:[],ai:[]}};
+  const tokens=q.split(" ").filter(Boolean);
+  const scored=SHUMAI_SEARCH_INDEX.map(entry=>{
+    const title=normalizeSearchText(entry.title);
+    const eyebrow=normalizeSearchText(entry.eyebrow);
+    let score=0;
+    if(title===q) score+=120;
+    if(title.includes(q)) score+=80;
+    if(eyebrow.includes(q)) score+=34;
+    if(entry.searchText.includes(q)) score+=32;
+    tokens.forEach(token=>{
+      if(title.includes(token)) score+=22;
+      else if(entry.searchText.includes(token)) score+=8;
+    });
+    if(entry.group==="topic") score+=8;
+    if(entry.group==="exam" && /真题|中考|20\d{2}|第/.test(query)) score+=28;
+    if(entry.group==="method" && /法|方法|思想|题眼/.test(query)) score+=22;
+    if(entry.type==="wrong" && /错|错因|不会|卡|漏/.test(query)) score+=22;
+    if(entry.group==="ai" && /问|提示|AI|ai|学长|卡/.test(query)) score+=18;
+    return {...entry, score};
+  }).filter(entry=>entry.score>0)
+    .sort((a,b)=>b.score-a.score || a.title.length-b.title.length);
+
+  const groups={topic:[],question:[],method:[],exam:[],ai:[]};
+  scored.forEach(entry=>{
+    if(groups[entry.group] && groups[entry.group].length<limitPerGroup) groups[entry.group].push(entry);
+  });
+  return {top:scored.slice(0,6), groups};
+}
+
+function ShuMaiSearchResults({query, results, onPick, compact=false}) {
+  const hasAny=results.top.length>0 || Object.values(results.groups).some(arr=>arr.length>0);
+  const renderEntry=(entry, groupKey)=>(
+    <button key={`${groupKey}-${entry.id}`} onMouseDown={e=>e.preventDefault()} onClick={()=>onPick(entry)}
+      style={{
+        width:"100%",
+        display:"grid",
+        gridTemplateColumns:compact?"minmax(0,1fr)":"minmax(0,1fr) auto",
+        gap:10,
+        textAlign:"left",
+        padding:compact?"10px 10px":"11px 12px",
+        borderRadius:9,
+        border:`1px solid ${C.border}`,
+        background:C.s2,
+        color:C.text,
+        cursor:"pointer",
+        minWidth:0,
+        maxWidth:"100%",
+        overflow:"hidden",
+      }}>
+      <span style={{minWidth:0}}>
+        <span style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:5,minWidth:0}}>
+          <span style={{fontSize:11,fontWeight:950,color:entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo,
+            background:(entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo)+"14",border:`1px solid ${(entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo)}2e`,
+            borderRadius:999,padding:"2px 7px",lineHeight:1.2}}>
+            {entry.eyebrow}
+          </span>
+        </span>
+        <span style={{display:"block",fontSize:compact?13:14,fontWeight:950,color:C.text,lineHeight:1.45,
+          overflowWrap:"anywhere",wordBreak:compact?"break-all":"break-word"}}>
+          {entry.title}
+        </span>
+        <span style={{display:"block",fontSize:12,color:C.muted,lineHeight:1.55,marginTop:4,
+          overflowWrap:"anywhere",wordBreak:compact?"break-all":"break-word"}}>
+          {entry.desc}
+        </span>
+      </span>
+      <span style={{alignSelf:compact?"start":"center",fontSize:12,fontWeight:950,color:entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo,
+        whiteSpace:compact?"normal":"nowrap",overflowWrap:"anywhere"}}>
+        {entry.action}
+      </span>
+    </button>
+  );
+
+  if(!query.trim()) {
+    return (
+      <div style={{padding:12,color:C.muted,fontSize:13,lineHeight:1.7}}>
+        试试搜索“二次函数”“圆的切线”“分类讨论”“不会列方程”。
+      </div>
+    );
+  }
+
+  if(!hasAny) {
+    return (
+      <div style={{padding:14,color:C.muted,fontSize:13,lineHeight:1.7}}>
+        暂时没有匹配结果。首版先搜索数学知识点、题目、方法、真题和 AI 问法。
+      </div>
+    );
+  }
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:compact?10:12,minWidth:0}}>
+      {results.top.length>0&&(
+        <section style={{minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:950,color:C.geo,margin:"0 0 7px"}}>
+            {SEARCH_GROUP_LABELS.top}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:7,minWidth:0}}>
+            {results.top.slice(0,compact?4:6).map(entry=>renderEntry(entry,"top"))}
+          </div>
+        </section>
+      )}
+      {Object.entries(results.groups).map(([groupKey,items])=>items.length>0&&(
+        <section key={groupKey} style={{minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:950,color:SEARCH_GROUP_COLORS[groupKey],margin:"0 0 7px"}}>
+            {SEARCH_GROUP_LABELS[groupKey]}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:7,minWidth:0}}>
+            {items.slice(0,compact?3:4).map(entry=>renderEntry(entry,groupKey))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function ShuMaiSearchBox({variant="home", onPick}) {
+  const {isMobile}=useBP();
+  const initialQuery=useMemo(()=>{
+    try{return new URLSearchParams(window.location.search).get("search") || "";}catch{return "";}
+  },[]);
+  const [query,setQuery]=useState(initialQuery);
+  const [open,setOpen]=useState(!!initialQuery);
+  const [mobileOpen,setMobileOpen]=useState(false);
+  const wrapRef=useRef(null);
+  const results=useMemo(()=>searchShuMaiIndex(query),[query]);
+  const strong=variant==="math";
+  const accent=strong?C.geo:C.alg;
+  const placeholder=strong ? "搜知识点、题型、方法、真题" : "搜知识点、题型、错因";
+
+  useEffect(()=>{
+    if(initialQuery && isMobile) setMobileOpen(true);
+    if(initialQuery && !isMobile) setOpen(true);
+  },[initialQuery,isMobile]);
+
+  useEffect(()=>{
+    if(isMobile) return;
+    const handler=e=>{
+      if(wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    window.addEventListener("mousedown",handler);
+    return ()=>window.removeEventListener("mousedown",handler);
+  },[isMobile]);
+
+  const handlePick=(entry)=>{
+    setOpen(false);
+    setMobileOpen(false);
+    onPick?.(entry);
+  };
+
+  const inputStyle={
+    width:"100%",
+    height:strong?46:42,
+    padding:"0 42px 0 42px",
+    borderRadius:strong?12:11,
+    border:`1px solid ${open || mobileOpen ? accent+"66" : C.border}`,
+    background:C.s2,
+    color:C.text,
+    outline:"none",
+    fontSize:14,
+    fontWeight:800,
+    minWidth:0,
+  };
+
+  return (
+    <div ref={wrapRef} style={{position:"relative",width:"100%",maxWidth:strong?720:560,minWidth:0,zIndex:30}}>
+      {isMobile?(
+        <button onClick={()=>setMobileOpen(true)}
+          style={{
+            width:"100%",
+            minHeight:42,
+            display:"flex",
+            alignItems:"center",
+            gap:10,
+            padding:"10px 12px",
+            borderRadius:11,
+            border:`1px solid ${C.border}`,
+            background:C.s2,
+            color:query?C.text:C.muted,
+            cursor:"pointer",
+            textAlign:"left",
+            minWidth:0,
+            overflow:"hidden",
+          }}>
+          <span style={{fontSize:16,color:accent,flexShrink:0}}>⌕</span>
+          <span style={{fontSize:14,fontWeight:850,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {query || placeholder}
+          </span>
+        </button>
+      ):(
+        <>
+          <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:17,color:accent,zIndex:1}}>⌕</span>
+          <input value={query} onChange={e=>{setQuery(e.target.value);setOpen(true);}}
+            onFocus={()=>setOpen(true)}
+            placeholder={placeholder}
+            style={inputStyle}/>
+          {query&&(
+            <button onClick={()=>{setQuery("");setOpen(true);}}
+              style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
+                width:24,height:24,borderRadius:12,border:"none",background:C.s3,color:C.muted,
+                cursor:"pointer",fontWeight:900}}>
+              ×
+            </button>
+          )}
+          {open&&(
+            <div style={{
+              position:"absolute",
+              left:0,
+              right:0,
+              top:"calc(100% + 8px)",
+              zIndex:40,
+              maxHeight:"min(66vh, 620px)",
+              overflowY:"auto",
+              overflowX:"hidden",
+              padding:10,
+              borderRadius:14,
+              background:C.s1,
+              border:`1px solid ${accent}30`,
+              boxShadow:"0 18px 44px rgba(0,0,0,.24)",
+              minWidth:0,
+            }}>
+              <ShuMaiSearchResults query={query} results={results} onPick={handlePick}/>
+            </div>
+          )}
+        </>
+      )}
+
+      {isMobile&&mobileOpen&&(
+        <>
+          <div onClick={()=>setMobileOpen(false)}
+            style={{position:"fixed",inset:0,zIndex:180,background:"rgba(0,0,0,.28)"}}/>
+          <div style={{
+            position:"fixed",
+            top:52,
+            left:0,
+            right:"auto",
+            width:"min(100vw, 390px)",
+            maxWidth:"390px",
+            boxSizing:"border-box",
+            zIndex:181,
+            maxHeight:"calc(100vh - 52px)",
+            overflowY:"auto",
+            overflowX:"hidden",
+            borderRadius:"0 0 16px 16px",
+            background:C.s1,
+            border:`1px solid ${accent}34`,
+            boxShadow:"0 18px 44px rgba(0,0,0,.28)",
+            padding:"14px 12px 12px",
+            minWidth:0,
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:10,minHeight:34,marginBottom:8,minWidth:0,width:"100%"}}>
+              <div style={{fontSize:13,fontWeight:950,color:accent}}>树脉搜索</div>
+              <button onClick={()=>setMobileOpen(false)}
+                style={{height:32,padding:"0 10px",borderRadius:9,cursor:"pointer",
+                  border:`1px solid ${C.border}`,background:C.s2,color:C.muted,fontWeight:900}}>
+                关闭
+              </button>
+            </div>
+            <div style={{display:"block",marginBottom:10,minWidth:0,width:"100%"}}>
+              <div style={{position:"relative",minWidth:0,width:"100%"}}>
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:16,color:accent}}>⌕</span>
+                <input autoFocus value={query} onChange={e=>setQuery(e.target.value)}
+                  placeholder={placeholder}
+                  style={{...inputStyle,height:44,borderColor:accent+"66",borderRadius:12}}/>
+              </div>
+            </div>
+            <ShuMaiSearchResults query={query} results={results} onPick={handlePick} compact/>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function isSlashPromptTrigger(value="") {
   const text=String(value || "");
   const trimmed=text.trim();
@@ -1272,7 +1688,7 @@ const MODULE_CONFIG = [
 /* ════════════════════════════════════════════════════════════
    PAGE: DASHBOARD
 ════════════════════════════════════════════════════════════ */
-function PageHome({mastered,wrongSet,onNav}) {
+function PageHome({mastered,wrongSet,onNav,onSearchPick}) {
   const {isMobile}=useBP();
   const gradeLabel = localStorage.getItem("shumai_grade") || "未设置学段";
   const currentStage = inferStageFromGrade(gradeLabel);
@@ -1320,6 +1736,9 @@ function PageHome({mastered,wrongSet,onNav}) {
           <p style={{margin:0,fontSize:isMobile?15:17,color:C.muted,lineHeight:1.9,...mobileWrapText}}>
             先选择学科，再由对应 AI 教练告诉学生今天该学什么、为什么学、怎么补、补到哪里算会。
           </p>
+          <div style={{marginTop:18,maxWidth:560,minWidth:0}}>
+            <ShuMaiSearchBox variant="home" onPick={onSearchPick}/>
+          </div>
           <div style={{marginTop:26,padding:isMobile?14:16,borderRadius:14,
             background:`linear-gradient(135deg,${C.alg}10,${C.geo}0c)`,border:`1px solid ${C.alg}24`,minWidth:0,overflow:"hidden"}}>
             <div style={{fontSize:12,color:C.purple,fontWeight:900,marginBottom:6,minWidth:0}}>共用 AI 判断</div>
@@ -1397,7 +1816,7 @@ function PageHome({mastered,wrongSet,onNav}) {
   );
 }
 
-function PageMathHome({mastered,wrongSet,progress,onNav}) {
+function PageMathHome({mastered,wrongSet,progress,onNav,onSearchPick}) {
   const {isMobile}=useBP();
   const total=TOPICS.length;
   const gradeLabel = localStorage.getItem("shumai_grade") || "未设置学段";
@@ -1505,6 +1924,9 @@ function PageMathHome({mastered,wrongSet,progress,onNav}) {
                   <Tag c={C.alg}>{identityLabel}</Tag>
                   <Tag c={C.geo}>{studyMode}</Tag>
                   <Tag c={C.gold}>中考数学主体系</Tag>
+                </div>
+                <div style={{marginTop:16,maxWidth:720,minWidth:0}}>
+                  <ShuMaiSearchBox variant="math" onPick={onSearchPick}/>
                 </div>
               </div>
               <button onClick={()=>onNav("home")}
@@ -11103,6 +11525,43 @@ export default function App() {
     setSidebarOpen(false);
   },[]);
 
+  const handleSearchPick=useCallback((entry)=>{
+    if(!entry) return;
+    if(entry.type==="topic" && entry.topicId) {
+      navigate("detail", entry.topicId);
+      return;
+    }
+    if(entry.type==="basic" && entry.topicId) {
+      navigate("modules");
+      return;
+    }
+    if(entry.type==="exam") {
+      setPracticeF(prev=>({
+        ...prev,
+        topic:entry.topicId || "all",
+        year:entry.year ? String(entry.year) : "all",
+        city:entry.city || "all",
+        mode:"all",
+      }));
+      setLastPracticeQId(entry.qid);
+      navigate("practice");
+      return;
+    }
+    if(entry.type==="method") {
+      navigate("methods");
+      return;
+    }
+    if(entry.type==="wrong") {
+      navigate("wrong");
+      return;
+    }
+    if(entry.type==="ai") {
+      navigate("practice");
+      return;
+    }
+    if(entry.topicId) navigate("detail", entry.topicId);
+  },[navigate]);
+
   // 监听子组件发出的跨页面导航事件（用于真题页的知识点分拆跳转）
   useEffect(()=>{
     const handler=(e)=>{
@@ -11579,8 +12038,8 @@ export default function App() {
         <main style={{flex:1,overflowY:"auto",overflowX:"hidden",minWidth:0,width:"100%",maxWidth:"100%",
           ...(bp.isMobile&&!isPortalShell?{paddingBottom:"calc(56px + env(safe-area-inset-bottom))",maxWidth:"100vw"}:{maxWidth:bp.isMobile?"100vw":"100%"}),
           ...(bp.isTablet?{marginLeft:44}:{})}}>
-          {view==="home"&&<PageHome mastered={mastered} wrongSet={wrongSet} onNav={navigate}/>}
-          {view==="math"&&<PageMathHome mastered={mastered} wrongSet={wrongSet} progress={0} onNav={navigate}/>}
+          {view==="home"&&<PageHome mastered={mastered} wrongSet={wrongSet} onNav={navigate} onSearchPick={handleSearchPick}/>}
+          {view==="math"&&<PageMathHome mastered={mastered} wrongSet={wrongSet} progress={0} onNav={navigate} onSearchPick={handleSearchPick}/>}
           {view==="english"&&<PageEnglish onNav={navigate}/>}
           {view==="wechat"&&<PageWechatCoach authUser={authUser} authToken={authToken} onOpenAuth={()=>openAuth("login")} onNav={navigate}/>}
           {view==="plan"&&<PageReversePlan onNav={navigate}/>}
