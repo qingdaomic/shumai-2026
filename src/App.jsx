@@ -9982,11 +9982,14 @@ function PageTeacher({onNav}) {
 ════════════════════════════════════════════════════════════ */
 function PageAdmin({onNav}) {
   const {isMobile}=useBP();
-  const [tab,setTab]=useState("cron"); // cron | users | stats | config | questions
+  const [tab,setTab]=useState("cron"); // cron | users | stats | resources | questions | skills | config
   const [configs,setConfigs]=useState([]);
   const [users,setUsers]=useState([]);
   const [stats,setStats]=useState(null);
   const [resources,setResources]=useState(null);
+  const [skills,setSkills]=useState([]);
+  const [skillSummary,setSkillSummary]=useState(null);
+  const [skillFilters,setSkillFilters]=useState({search:"",type:"all",status:"all",scene:"all",subject:"all"});
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
   // D6 题库状态
@@ -10011,13 +10014,30 @@ function PageAdmin({onNav}) {
   const loadUsers=async()=>{setLoading(true);try{setUsers(await api("GET","/users"));}catch(e){setMsg("❌ "+e.message);}setLoading(false);};
   const loadStats=async()=>{setLoading(true);try{setStats(await api("GET","/stats"));}catch(e){setMsg("❌ "+e.message);}setLoading(false);};
   const loadResources=async()=>{setLoading(true);try{setResources(await api("GET","/resources"));}catch(e){setMsg("❌ "+e.message);}setLoading(false);};
+  const loadSkills=async(filters=skillFilters)=>{
+    setLoading(true);
+    try{
+      const qs=new URLSearchParams();
+      Object.entries(filters).forEach(([k,v])=>{ if(String(v||"").trim()) qs.set(k,v); });
+      const data=await api("GET",`/skills?${qs.toString()}`);
+      setSkills(data.items||[]);
+      setSkillSummary(data.summary||null);
+    }catch(e){setMsg("❌ "+e.message);}setLoading(false);
+  };
 
   useEffect(()=>{
     if(tab==="cron"||tab==="config") loadConfigs();
     else if(tab==="users") loadUsers();
     else if(tab==="stats") loadStats();
     else if(tab==="resources") loadResources();
+    else if(tab==="skills") loadSkills();
   },[tab]);
+
+  useEffect(()=>{
+    if(tab!=="skills") return;
+    const timer=setTimeout(()=>loadSkills(skillFilters),220);
+    return()=>clearTimeout(timer);
+  },[skillFilters, tab]);
 
   // 更新配置
   const updateConfig=async(key,newValue)=>{
@@ -10056,6 +10076,7 @@ function PageAdmin({onNav}) {
     {id:"users",label:"👥 用户管理",color:C.alg},
     {id:"stats",label:"📊 数据统计",color:C.geo},
     {id:"resources",label:"💳 资源计费",color:C.red},
+    {id:"skills",label:"🧠 Skill 管理",color:C.ok},
     {id:"questions",label:"📝 题库管理",color:"#22d3ee"},
     {id:"config",label:"⚙️ 系统配置",color:C.purple},
   ];
@@ -10195,6 +10216,86 @@ function PageAdmin({onNav}) {
       {/* ── 资源计费 ── */}
       {tab==="resources"&&!loading&&resources&&(
         <ResourceBillingPanel data={resources} onRefresh={loadResources} api={api}/>
+      )}
+
+      {/* ── 教学 Skill 管理 ── */}
+      {tab==="skills"&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)",gap:10,marginBottom:14}}>
+            {[
+              {label:"Skill 总数",val:skillSummary?.total||0,color:C.alg},
+              {label:"启用中",val:skillSummary?.active||0,color:C.ok},
+              {label:"停用",val:skillSummary?.disabled||0,color:C.red},
+              {label:"前台可用",val:skillSummary?.student_frontend||0,color:C.geo},
+            ].map((s,i)=>(
+              <div key={i} style={{padding:12,borderRadius:10,background:C.s1,border:`1px solid ${s.color}33`,textAlign:"center"}}>
+                <div style={{fontSize:24,fontWeight:900,color:s.color}}>{s.val}</div>
+                <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"2fr 1fr 1fr 1fr 1fr",gap:8,marginBottom:12}}>
+            <input value={skillFilters.search} onChange={e=>setSkillFilters(prev=>({...prev,search:e.target.value}))}
+              placeholder="搜索 skill_key / 名称 / 内容"
+              style={{padding:"8px 12px",borderRadius:8,fontSize:14,background:C.s2,border:`1px solid ${C.border}`,color:C.text,outline:"none"}}/>
+            <select value={skillFilters.type} onChange={e=>setSkillFilters(prev=>({...prev,type:e.target.value}))}
+              style={{padding:"8px 10px",borderRadius:8,fontSize:14,background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+              <option value="all">全部类型</option>
+              {[...new Set((skillSummary?.byType||[]).map(x=>x.type).filter(Boolean))].map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <select value={skillFilters.status} onChange={e=>setSkillFilters(prev=>({...prev,status:e.target.value}))}
+              style={{padding:"8px 10px",borderRadius:8,fontSize:14,background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+              <option value="all">全部状态</option>
+              <option value="active">active</option>
+              <option value="disabled">disabled</option>
+              <option value="draft">draft</option>
+              <option value="archived">archived</option>
+            </select>
+            <select value={skillFilters.scene} onChange={e=>setSkillFilters(prev=>({...prev,scene:e.target.value}))}
+              style={{padding:"8px 10px",borderRadius:8,fontSize:14,background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+              <option value="all">全部场景</option>
+              {[...new Set((skillSummary?.byScene||[]).map(x=>x.scene).filter(Boolean))].map(v=><option key={v} value={v}>{v}</option>)}
+            </select>
+            <select value={skillFilters.subject} onChange={e=>setSkillFilters(prev=>({...prev,subject:e.target.value}))}
+              style={{padding:"8px 10px",borderRadius:8,fontSize:14,background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+              <option value="all">全部学科</option>
+              <option value="math">math</option>
+            </select>
+          </div>
+
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12,fontSize:13,color:C.muted}}>
+            {(skillSummary?.byType||[]).slice(0,6).map(item=>(
+              <span key={item.type} style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
+                {item.type} · {item.total} · 权重均值 {item.avg_weight}
+              </span>
+            ))}
+          </div>
+
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{borderBottom:`2px solid ${C.border}`}}>
+                  {["Skill","类型","场景","主题","权重","状态","更新时间","操作"].map(h=>(
+                    <th key={h} style={{padding:"8px 10px",textAlign:"left",color:C.muted,fontWeight:700,whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {skills.map(item=>(
+                  <SkillRow key={item.id} item={item} api={api} onSaved={()=>loadSkills(skillFilters)} />
+                ))}
+                {skills.length===0&&(
+                  <tr>
+                    <td colSpan={8} style={{padding:18,textAlign:"center",color:C.muted}}>
+                      暂无 Skill，或筛选条件下没有结果。
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* ── D6 题库管理 ── */}
@@ -10632,6 +10733,78 @@ function ResourceBillingPanel({data,onRefresh,api}) {
         </div>
       </div>
     </div>
+  );
+}
+
+function SkillRow({item,api,onSaved}) {
+  const [weight,setWeight]=useState(String(item.weight ?? 0.7));
+  const [status,setStatus]=useState(item.status || "active");
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    setWeight(String(item.weight ?? 0.7));
+    setStatus(item.status || "active");
+  },[item.id, item.weight, item.status]);
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      await api("PUT",`/skills/${item.id}`,{
+        weight:Number(weight),
+        status,
+      });
+      onSaved?.();
+    }catch(e){
+      alert(e.message);
+    }
+    setSaving(false);
+  };
+
+  const badgeColor=
+    status==="active"?C.ok:
+    status==="disabled"?C.red:
+    status==="draft"?C.sta:
+    C.muted;
+
+  return (
+    <tr style={{borderBottom:`1px solid ${C.border}`}}>
+      <td style={{padding:"10px 10px",verticalAlign:"top"}}>
+        <div style={{fontWeight:800,color:C.text,lineHeight:1.5}}>{item.name}</div>
+        <div style={{fontSize:12,color:C.dim,marginTop:3,fontFamily:"monospace"}}>{item.skill_key}</div>
+        <div style={{fontSize:12,color:C.muted,marginTop:4,lineHeight:1.5,maxWidth:380,whiteSpace:"normal",overflowWrap:"anywhere"}}>
+          {String(item.goal || item.content || "").slice(0,120)}
+        </div>
+      </td>
+      <td style={{padding:"10px 10px",color:C.muted,whiteSpace:"nowrap"}}>{item.type}</td>
+      <td style={{padding:"10px 10px",color:C.muted,whiteSpace:"nowrap"}}>{item.scene}</td>
+      <td style={{padding:"10px 10px",color:C.muted,whiteSpace:"nowrap"}}>
+        {item.topic_code || "—"}
+      </td>
+      <td style={{padding:"10px 10px"}}>
+        <input value={weight} onChange={e=>setWeight(e.target.value)}
+          inputMode="decimal"
+          style={{width:76,padding:"6px 8px",borderRadius:8,fontSize:13,background:C.s2,border:`1px solid ${C.border}`,color:C.text,outline:"none"}}/>
+      </td>
+      <td style={{padding:"10px 10px"}}>
+        <select value={status} onChange={e=>setStatus(e.target.value)}
+          style={{padding:"6px 8px",borderRadius:8,fontSize:13,background:badgeColor+"14",color:badgeColor,border:`1px solid ${badgeColor}33`,cursor:"pointer"}}>
+          <option value="active">active</option>
+          <option value="disabled">disabled</option>
+          <option value="draft">draft</option>
+          <option value="archived">archived</option>
+        </select>
+      </td>
+      <td style={{padding:"10px 10px",color:C.dim,whiteSpace:"nowrap"}}>
+        {item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN") : "—"}
+      </td>
+      <td style={{padding:"10px 10px",whiteSpace:"nowrap"}}>
+        <button onClick={save} disabled={saving}
+          style={{padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:800,
+            background:C.ok+"18",color:C.ok,border:`1px solid ${C.ok}33`,opacity:saving?0.6:1}}>
+          {saving?"保存中":"保存"}
+        </button>
+      </td>
+    </tr>
   );
 }
 
