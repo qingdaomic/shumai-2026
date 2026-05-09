@@ -10131,6 +10131,9 @@ function PageAdmin({onNav}) {
       : item.action==="skill_rewrite"
         ? `内容 ${item.before_value?.contentLength ?? "-"} 字 → ${item.after_value?.contentLength ?? "-"} 字`
         : item.reason || "已记录",
+    beforeValue:item.before_value || {},
+    afterValue:item.after_value || {},
+    reason:item.reason || "",
     stored:true,
   });
 
@@ -10155,6 +10158,11 @@ function PageAdmin({onNav}) {
 
   const recordSkillOp=(op, logPayload)=>{
     const localOp={...op,targetKey:logPayload?.targetKey,at:Date.now()};
+    if(logPayload) {
+      localOp.beforeValue=logPayload.beforeValue || {};
+      localOp.afterValue=logPayload.afterValue || {};
+      localOp.reason=logPayload.reason || "";
+    }
     setSkillOps(prev=>[localOp,...prev].slice(0,6));
     if(localOp.targetKey) setSkillOpByKey(prev=>({...prev,[localOp.targetKey]:localOp}));
     if(logPayload) {
@@ -11238,7 +11246,16 @@ function SkillOperationTips({ops=[],meta={},onRefresh}) {
 }
 
 function SkillOperationHistoryPanel({history,onClose,onRefresh}) {
+  const [openKey,setOpenKey]=useState(null);
   if(!history?.skill) return null;
+  const SummaryBox=({title,value,color})=>(
+    <div style={{padding:8,borderRadius:8,background:C.s2,border:`1px solid ${color}24`,minWidth:0}}>
+      <div style={{fontSize:11,color,fontWeight:900,marginBottom:5}}>{title}</div>
+      <pre style={{margin:0,fontSize:11,lineHeight:1.5,color:C.muted,whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontFamily:"monospace"}}>
+        {JSON.stringify(value && Object.keys(value).length ? value : {}, null, 2)}
+      </pre>
+    </div>
+  );
   return (
     <div style={{padding:12,borderRadius:12,background:C.purple+"0d",border:`1px solid ${C.purple}24`,marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
@@ -11266,16 +11283,38 @@ function SkillOperationHistoryPanel({history,onClose,onRefresh}) {
       </div>
       {history.items?.length?(
         <div style={{display:"grid",gap:6}}>
-          {history.items.map(op=>(
-            <div key={`${op.at}-${op.type}-${op.detail}`} style={{display:"grid",gridTemplateColumns:"64px 1fr auto",gap:8,
-              alignItems:"center",padding:"7px 8px",borderRadius:9,background:C.s1,border:`1px solid ${C.border}`}}>
-              <span style={{fontSize:12,color:op.type==="降权"?C.red:C.sta,fontWeight:950}}>{op.type}</span>
-              <span style={{fontSize:12,color:C.text,overflowWrap:"anywhere"}}>{op.detail}</span>
-              <span style={{fontSize:11,color:C.dim,whiteSpace:"nowrap"}}>
-                {new Date(op.at).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
-              </span>
-            </div>
-          ))}
+          {history.items.map(op=>{
+            const key=`${op.at}-${op.type}-${op.detail}`;
+            const open=openKey===key;
+            return (
+              <div key={key} style={{padding:"7px 8px",borderRadius:9,background:C.s1,border:`1px solid ${C.border}`}}>
+                <div style={{display:"grid",gridTemplateColumns:"64px 1fr auto auto",gap:8,alignItems:"center"}}>
+                  <span style={{fontSize:12,color:op.type==="降权"?C.red:C.sta,fontWeight:950}}>{op.type}</span>
+                  <span style={{fontSize:12,color:C.text,overflowWrap:"anywhere"}}>{op.detail}</span>
+                  <span style={{fontSize:11,color:C.dim,whiteSpace:"nowrap"}}>
+                    {new Date(op.at).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
+                  </span>
+                  <button onClick={()=>setOpenKey(open?null:key)}
+                    style={{padding:"3px 7px",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:850,
+                      background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
+                    {open?"收起":"详情"}
+                  </button>
+                </div>
+                {open&&(
+                  <div style={{marginTop:8,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
+                    <SummaryBox title="操作前" value={op.beforeValue} color={C.red}/>
+                    <SummaryBox title="操作后" value={op.afterValue} color={C.ok}/>
+                    <div style={{padding:8,borderRadius:8,background:C.s2,border:`1px solid ${C.border}`,minWidth:0}}>
+                      <div style={{fontSize:11,color:C.purple,fontWeight:900,marginBottom:5}}>原因 / 来源</div>
+                      <div style={{fontSize:12,color:C.muted,lineHeight:1.6,overflowWrap:"anywhere"}}>
+                        {op.reason || "暂无原因记录"}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ):(
         <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>
