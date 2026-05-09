@@ -552,6 +552,11 @@ function bumpSlashLocalStat(skillKey, field, amount=1) {
   current[field]=Number(current[field] || 0)+amount;
   stats[skillKey]=current;
   saveSlashLocalStats(stats);
+  try {
+    window.dispatchEvent(new CustomEvent("shumai-skill-local-stats", {
+      detail: { skillKey, field, stats: current, at: Date.now() },
+    }));
+  } catch {}
 }
 
 function scoreSlashPromptItem(item, ctx) {
@@ -11895,6 +11900,31 @@ const PET_SKILL_ACTIONS = [
   },
 ];
 
+function scorePetSkillAction(action, statsMap={}) {
+  const stats=statsMap[action.skill_key] || {};
+  const feedbackTotal=Number(stats.helpful || 0) + Number(stats.not_helpful || 0);
+  let score=10;
+  score += Number(stats.click || 0) * 1.2;
+  score += Number(stats.ai_used || 0) * 3.2;
+  score += Number(stats.helpful || 0) * 8;
+  score -= Number(stats.not_helpful || 0) * 10;
+  if(feedbackTotal>0) score += (Number(stats.helpful || 0) / feedbackTotal) * 6;
+  return score;
+}
+
+function getPetSkillActionSignal(action, statsMap={}) {
+  const stats=statsMap[action.skill_key] || {};
+  const helpful=Number(stats.helpful || 0);
+  const notHelpful=Number(stats.not_helpful || 0);
+  const aiUsed=Number(stats.ai_used || 0);
+  const clicks=Number(stats.click || 0);
+  if(helpful > notHelpful) return {label:"反馈较好", color:C.geo};
+  if(notHelpful > helpful) return {label:"需观察", color:C.sta};
+  if(aiUsed > 0) return {label:"已被使用", color:C.purple};
+  if(clicks > 0) return {label:"有人点击", color:C.alg};
+  return {label:"默认建议", color:C.muted};
+}
+
 function loadPetState(defaultOpen=true) {
   try {
     const saved = JSON.parse(localStorage.getItem(PET_STORAGE_KEY) || "{}");
@@ -12046,6 +12076,7 @@ function LearningPet({authToken}) {
   const [rulesOpen,setRulesOpen]=useState(false);
   const [galleryOpen,setGalleryOpen]=useState(false);
   const [activitySummary,setActivitySummary]=useState(()=>readPetActivitySummary());
+  const [skillStatsVersion,setSkillStatsVersion]=useState(0);
   const level=petLevel(pet.xp);
   const nextXp=level*80;
   const currentBase=(level-1)*80;
@@ -12053,6 +12084,17 @@ function LearningPet({authToken}) {
   const modeInfo=PET_MODE_COPY[pet.mode] || PET_MODE_COPY.idle;
   const unlockedBadges=PET_GROWTH_BADGES.filter(badge=>level>=badge.minLevel);
   const activeBadge=unlockedBadges[unlockedBadges.length-1] || PET_GROWTH_BADGES[0];
+  const petSkillActions=useMemo(()=>{
+    const statsMap=loadSlashLocalStats();
+    return PET_SKILL_ACTIONS.map((action,index)=>{
+      const signal=getPetSkillActionSignal(action, statsMap);
+      return {
+        ...action,
+        signal,
+        score: scorePetSkillAction(action, statsMap) + (PET_SKILL_ACTIONS.length - index) * 0.01,
+      };
+    }).sort((a,b)=>b.score-a.score);
+  },[skillStatsVersion]);
 
   useEffect(()=>{
     try {
@@ -12134,6 +12176,16 @@ function LearningPet({authToken}) {
     window.addEventListener("shumai-pet-xp", onReward);
     return()=>window.removeEventListener("shumai-pet-xp", onReward);
   },[syncPetEventToCloud, syncPetStateToCloud]);
+
+  useEffect(()=>{
+    const refresh=()=>setSkillStatsVersion(v=>v+1);
+    window.addEventListener("shumai-skill-local-stats", refresh);
+    window.addEventListener("storage", refresh);
+    return()=>{
+      window.removeEventListener("shumai-skill-local-stats", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  },[]);
 
   useEffect(()=>{
     const onMode=(e)=>{
@@ -12248,13 +12300,18 @@ function LearningPet({authToken}) {
           </div>
         )}
         <div style={{display:"grid",gap:6,marginTop:10}}>
-          {PET_SKILL_ACTIONS.map(action=>(
+          {petSkillActions.map((action,index)=>(
             <button key={action.id} onClick={()=>triggerLearningPetSkillAction(action)}
               style={{minHeight:34,padding:"7px 9px",borderRadius:9,
-                border:`1px solid ${C.geo}30`,background:C.geo+"10",
+                border:`1px solid ${(index===0?C.geo:action.signal.color)}30`,background:(index===0?C.geo:action.signal.color)+"10",
                 color:C.text,cursor:"pointer",fontSize:12,fontWeight:900,
                 textAlign:"left",lineHeight:1.35}}>
-              {action.label}
+              <span style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <span>{action.label}</span>
+                <span style={{fontSize:10,color:index===0?C.geo:action.signal.color,fontWeight:950,whiteSpace:"nowrap"}}>
+                  {index===0?"优先建议":action.signal.label}
+                </span>
+              </span>
             </button>
           ))}
         </div>
