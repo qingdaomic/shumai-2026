@@ -11247,7 +11247,9 @@ function SkillOperationTips({ops=[],meta={},onRefresh}) {
 
 function SkillOperationHistoryPanel({history,onClose,onRefresh}) {
   const [openKey,setOpenKey]=useState(null);
+  const [typeFilter,setTypeFilter]=useState("all");
   if(!history?.skill) return null;
+  const visibleItems=(history.items||[]).filter(op=>typeFilter==="all"||op.type===typeFilter);
   const summarizeOperation=op=>{
     const before=op.beforeValue || {};
     const after=op.afterValue || {};
@@ -11303,9 +11305,27 @@ function SkillOperationHistoryPanel({history,onClose,onRefresh}) {
           </button>
         </div>
       </div>
-      {history.items?.length?(
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+        {[
+          ["all","全部"],
+          ["降权","降权"],
+          ["改写","改写"],
+        ].map(([value,label])=>(
+          <button key={value} onClick={()=>setTypeFilter(value)}
+            style={{padding:"4px 9px",borderRadius:999,cursor:"pointer",fontSize:12,fontWeight:850,
+              background:typeFilter===value?C.purple+"18":C.s2,
+              color:typeFilter===value?C.purple:C.muted,
+              border:`1px solid ${typeFilter===value?C.purple+"35":C.border}`}}>
+            {label}
+          </button>
+        ))}
+        <span style={{fontSize:12,color:C.dim,alignSelf:"center"}}>
+          当前 {visibleItems.length} / {(history.items||[]).length} 条
+        </span>
+      </div>
+      {visibleItems.length?(
         <div style={{display:"grid",gap:6}}>
-          {history.items.map(op=>{
+          {visibleItems.map(op=>{
             const key=`${op.at}-${op.type}-${op.detail}`;
             const open=openKey===key;
             return (
@@ -11339,7 +11359,7 @@ function SkillOperationHistoryPanel({history,onClose,onRefresh}) {
         </div>
       ):(
         <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>
-          暂无这个 Skill 的人工操作记录。数据库迁移和后端部署完成后，这里会显示持久化历史。
+          {history.items?.length?"当前筛选下暂无记录。":"暂无这个 Skill 的人工操作记录。数据库迁移和后端部署完成后，这里会显示持久化历史。"}
         </div>
       )}
     </div>
