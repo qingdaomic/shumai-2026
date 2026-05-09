@@ -34,6 +34,7 @@ function useWindowSize() {
 
 const DOM = { algebra:{name:"数与代数",color:C.alg}, geometry:{name:"图形与几何",color:C.geo}, stats:{name:"统计与概率",color:C.sta} };
 const STAGE_ORDER = ["小学","初中","高中"];
+const PRACTICE_FILTER_DEFAULT = {topic:"all",year:"all",city:"all",type:"all",diff:"all",mode:"all"};
 const inferStageFromGrade = (gradeLabel="") => {
   if(String(gradeLabel).includes("小")) return "小学";
   if(String(gradeLabel).includes("高")) return "高中";
@@ -2296,11 +2297,11 @@ function PageMathHome({mastered,wrongSet,progress,onNav,onSearchPick}) {
       actions:[["试卷分析","paper"],["考前冲刺","sprint"],["作业识别","ocr"]],
     },
     {
-      title:"反向规划",
+      title:"AI 计划",
       tag:"倒推走",
       color:C.gold,
-      desc:"从目标分数、时间和每日精力倒推阶段方案，再落到纸面训练。",
-      main:{label:"制定目标计划",nav:"plan"},
+      desc:"从画像、错题、知识树和每日精力生成可执行路线。",
+      main:{label:"生成个性化计划",nav:"plan"},
       actions:[["训练单","printplan"],["今日卡","morning"],["AI 路径","agent"]],
     },
   ];
@@ -2369,7 +2370,7 @@ function PageMathHome({mastered,wrongSet,progress,onNav,onSearchPick}) {
               <button onClick={()=>onNav("plan")}
                 style={{...buttonBase,padding:"12px 18px",borderRadius:11,background:C.s2,
                   color:C.text,border:`1px solid ${C.border}`}}>
-                反向规划目标分
+                生成 AI 计划
               </button>
             </div>
           </div>
@@ -2784,6 +2785,269 @@ function PageReversePlan({onNav}) {
   );
 }
 
+function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new Set(),authUser=null}) {
+  const {isMobile}=useBP();
+  const defaultProfile={
+    grade:authUser?.grade||"九年级",
+    currentScore:92,
+    targetScore:115,
+    examDays:80,
+    dailyMinutes:45,
+    weakSelf:["二次函数","圆"],
+    style:"稳扎稳打",
+    recentSignal:"正常推进",
+  };
+  const [profile,setProfile]=useState(()=>{
+    try{return {...defaultProfile,...JSON.parse(localStorage.getItem("shumai_page_plan_v2")||"{}")};}
+    catch{return defaultProfile;}
+  });
+  const [savedAt,setSavedAt]=useState("");
+  useEffect(()=>{
+    try{localStorage.setItem("shumai_page_plan_v2",JSON.stringify(profile));}catch{}
+  },[profile]);
+  const patchProfile=patch=>setProfile(p=>({...p,...patch}));
+  const toggleWeak=name=>setProfile(p=>{
+    const set=new Set(p.weakSelf||[]);
+    set.has(name)?set.delete(name):set.add(name);
+    return {...p,weakSelf:[...set].slice(0,5)};
+  });
+
+  const plan=useMemo(()=>{
+    const wrongTopicCount={};
+    EXAM_QS.forEach(q=>{
+      if(wrongSet.has(q.id)) wrongTopicCount[q.topic]=(wrongTopicCount[q.topic]||0)+1;
+    });
+    [...basicWrongSet].map(lookupBasicQ).filter(Boolean).forEach(q=>{
+      if(q.topic) wrongTopicCount[q.topic]=(wrongTopicCount[q.topic]||0)+1;
+    });
+    const weakSelfText=(profile.weakSelf||[]).join(" ");
+    const ranked=[...TOPICS].map(t=>{
+      const color=DOM[t.domain]?.color||C.alg;
+      const selfHit=weakSelfText.includes(t.name)||weakSelfText.includes(t.key);
+      const wrongBoost=(wrongTopicCount[t.id]||0)*26;
+      const masterBoost=mastered.has(t.id)?-28:18;
+      const gradeBoost=String(profile.grade).includes("九")&&(t.sem?.startsWith("9")||t.freq>70)?10:0;
+      return {...t,color,planScore:Math.max(0,t.freq/2+wrongBoost+masterBoost+gradeBoost+(selfHit?30:0)),wrongCount:wrongTopicCount[t.id]||0};
+    }).sort((a,b)=>b.planScore-a.planScore);
+    const focus=ranked.slice(0,4);
+    const gap=Math.max(0,Number(profile.targetScore)-Number(profile.currentScore));
+    const days=Math.max(14,Number(profile.examDays)||80);
+    const minutes=Math.max(15,Number(profile.dailyMinutes)||45);
+    const phase1=Math.max(7,Math.round(days*(gap>20?0.42:0.32)));
+    const phase2=Math.max(7,Math.round(days*(gap>20?0.36:0.42)));
+    const phase3=Math.max(1,days-phase1-phase2);
+    const targetDate=(()=>{
+      const d=new Date();
+      d.setDate(d.getDate()+days);
+      return d.toISOString().slice(0,10);
+    })();
+    const masteredRate=Math.round(mastered.size/TOPICS.length*100);
+    const stability=Math.max(35,Math.min(96,Math.round((Number(profile.currentScore)/120)*58+masteredRate*0.32-wrongSet.size*0.4+18)));
+    const load=minutes>=70
+      ? ["10分钟错因复盘","1组题组训练","4道真题限时","1道压轴思路拆解"]
+      : minutes>=45
+        ? ["8分钟知识树复盘","3道基础或真题","1道错题隔天验证"]
+        : ["5分钟知识点回看","2道基础题","1道错因口述复盘"];
+    const dynamic=profile.recentSignal==="错题变多"
+      ? "明天先降难度，保留错因复盘，把新题量减少三分之一。"
+      : profile.recentSignal==="时间不足"
+        ? "今天只保留最小闭环：一个知识点、两道题、一次错因复述。"
+        : "按当前节奏推进，每两天用错题和小测校正一次方向。";
+    return {
+      focus,gap,days,minutes,phase1,phase2,phase3,targetDate,masteredRate,stability,load,dynamic,
+      phases:[
+        {title:"补根基",days:phase1,color:C.geo,desc:`先修 ${focus.slice(0,2).map(t=>t.name).join("、")||"高频基础点"}，目标是能说清定义和常用条件。`},
+        {title:"提方法",days:phase2,color:C.alg,desc:"把题组、真题和 23 种方法连起来，训练识别题型的速度。"},
+        {title:"稳输出",days:phase3,color:C.purple,desc:"用限时真题、错题隔天验证和压轴拆解稳定得分。"},
+      ],
+      milestones:[
+        {day:Math.min(14,days),label:"第一次小测",desc:"看基础漏洞是否减少，错因是否能复述。"},
+        {day:Math.min(28,days),label:"路线校准",desc:"把仍反复出错的知识点提前。"},
+        {day:Math.min(days,Math.max(42,days-14)),label:"输出稳定性检查",desc:"用限时真题看会不会因为时间压力掉分。"},
+      ],
+      parentBrief:`本周不要只催做题，重点看孩子能不能把「${focus[0]?.name||"核心薄弱点"}」的错因讲清楚。每天 ${minutes} 分钟即可，完成闭环比刷题数量更重要。`,
+    };
+  },[profile,mastered,wrongSet,basicWrongSet]);
+
+  const weakOptions=["一次函数","二次函数","圆","相似三角形","概率统计","方程与不等式","几何证明","函数图象"];
+  const savePlan=()=>{
+    try{localStorage.setItem("shumai_page_plan_v2_saved",JSON.stringify({profile,plan,savedAt:new Date().toISOString()}));}catch{}
+    setSavedAt(new Date().toLocaleString("zh-CN"));
+  };
+
+  return(
+    <div style={{padding:isMobile?12:28,maxWidth:1120,margin:"0 auto",width:"100%"}}>
+      <div style={{border:`1px solid ${C.geo}24`,borderRadius:18,padding:isMobile?"18px 16px":"24px 28px",
+        background:`linear-gradient(135deg,${C.geo}10,${C.alg}08)`,marginBottom:14}}>
+        <div style={{fontSize:12,color:C.geo,letterSpacing:3,textTransform:"uppercase",fontWeight:800}}>PagePlan V2</div>
+        <h1 style={{margin:"6px 0 8px",fontSize:isMobile?24:30,color:C.text,fontWeight:950}}>个性化学习计划</h1>
+        <p style={{margin:0,fontSize:14,color:C.muted,lineHeight:1.8,maxWidth:760}}>
+          先采集学生画像，再把诊断、错题、知识树和每日任务合成一条可执行路线。目标不是多做题，而是每天知道下一步修哪里。
+        </p>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+          <Tag c={C.geo}>学生画像</Tag>
+          <Tag c={C.alg}>AI 路线图</Tag>
+          <Tag c={C.gold}>里程碑</Tag>
+          <Tag c={C.purple}>家长摘要</Tag>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"340px minmax(0,1fr)",gap:14}}>
+        <section style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:12}}>学生画像</div>
+          <label style={{display:"block",fontSize:13,color:C.muted,marginBottom:10}}>
+            年级
+            <select value={profile.grade} onChange={e=>patchProfile({grade:e.target.value})}
+              style={{marginTop:6,width:"100%",padding:"9px 10px",borderRadius:9,background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+              {["七年级","八年级","九年级"].map(g=><option key={g}>{g}</option>)}
+            </select>
+          </label>
+          {[
+            {key:"currentScore",label:"当前估分",min:0,max:120,unit:"分"},
+            {key:"targetScore",label:"目标分数",min:0,max:120,unit:"分"},
+            {key:"examDays",label:"剩余天数",min:14,max:365,unit:"天"},
+            {key:"dailyMinutes",label:"每日可学",min:15,max:150,unit:"分钟"},
+          ].map(item=>(
+            <label key={item.key} style={{display:"block",marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:C.muted,marginBottom:5}}>
+                <span>{item.label}</span><b style={{color:C.text}}>{profile[item.key]}{item.unit}</b>
+              </div>
+              <input type="range" min={item.min} max={item.max} value={profile[item.key]}
+                onChange={e=>patchProfile({[item.key]:Number(e.target.value)})}
+                style={{width:"100%",accentColor:C.geo}}/>
+            </label>
+          ))}
+          <div style={{fontSize:13,color:C.muted,margin:"12px 0 8px"}}>自评薄弱点</div>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:12}}>
+            {weakOptions.map(name=>{
+              const active=(profile.weakSelf||[]).includes(name);
+              return(
+                <button key={name} onClick={()=>toggleWeak(name)}
+                  style={{padding:"6px 9px",borderRadius:18,cursor:"pointer",fontSize:12,fontWeight:800,
+                    background:active?C.geo+"1f":C.s2,color:active?C.geo:C.muted,border:`1px solid ${active?C.geo+"55":C.border}`}}>
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+          <label style={{display:"block",fontSize:13,color:C.muted,marginBottom:12}}>
+            最近状态
+            <select value={profile.recentSignal} onChange={e=>patchProfile({recentSignal:e.target.value})}
+              style={{marginTop:6,width:"100%",padding:"9px 10px",borderRadius:9,background:C.s2,border:`1px solid ${C.border}`,color:C.text}}>
+              {["正常推进","错题变多","时间不足"].map(s=><option key={s}>{s}</option>)}
+            </select>
+          </label>
+          <button onClick={savePlan}
+            style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"none",background:C.alg,color:"white",fontWeight:900,cursor:"pointer"}}>
+            保存这份计划
+          </button>
+          {savedAt&&<div style={{marginTop:8,fontSize:12,color:C.ok}}>已保存：{savedAt}</div>}
+        </section>
+
+        <section style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:10}}>
+            {[
+              {label:"目标差距",val:`${plan.gap}分`,c:plan.gap>20?C.red:C.gold},
+              {label:"掌握进度",val:`${plan.masteredRate}%`,c:C.geo},
+              {label:"稳定指数",val:`${plan.stability}`,c:C.alg},
+              {label:"目标日期",val:plan.targetDate,c:C.purple},
+            ].map(x=>(
+              <div key={x.label} style={{background:C.s1,border:`1px solid ${x.c}24`,borderRadius:12,padding:14,minWidth:0}}>
+                <div style={{fontSize:12,color:C.muted,marginBottom:5}}>{x.label}</div>
+                <div style={{fontSize:20,fontWeight:950,color:x.c,overflowWrap:"anywhere"}}>{x.val}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}>
+              <div>
+                <div style={{fontSize:16,fontWeight:900,color:C.text}}>路线图</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:3}}>根据画像、错题和知识树自动排序</div>
+              </div>
+              <button onClick={()=>onNav("diag")}
+                style={{padding:"7px 12px",borderRadius:9,border:`1px solid ${C.geo}45`,background:C.geo+"12",color:C.geo,fontWeight:850,cursor:"pointer"}}>
+                去做诊断
+              </button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10}}>
+              {plan.phases.map((p,i)=>(
+                <div key={p.title} style={{border:`1px solid ${p.color}28`,background:C.s2,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:12,color:p.color,fontWeight:900,marginBottom:4}}>阶段 {i+1}</div>
+                  <div style={{fontSize:18,color:C.text,fontWeight:950,marginBottom:4}}>{p.title}</div>
+                  <div style={{fontSize:13,color:p.color,fontWeight:850,marginBottom:8}}>{p.days} 天</div>
+                  <div style={{fontSize:13,color:C.muted,lineHeight:1.7}}>{p.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.1fr .9fr",gap:12}}>
+            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+              <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:10}}>今日任务</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {plan.load.map((task,i)=>(
+                  <div key={task} style={{display:"flex",gap:9,alignItems:"flex-start",fontSize:14,color:C.text,lineHeight:1.6}}>
+                    <span style={{width:24,height:24,borderRadius:12,background:C.geo+"18",color:C.geo,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,flexShrink:0}}>{i+1}</span>
+                    <span>{task}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
+                <button onClick={()=>onNav("practice")} style={{padding:"8px 12px",borderRadius:9,border:"none",background:C.alg,color:"white",fontWeight:850,cursor:"pointer"}}>开始练题</button>
+                <button onClick={()=>onNav("wrong")} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${C.red}44`,background:C.red+"12",color:C.red,fontWeight:850,cursor:"pointer"}}>修复错因</button>
+                <button onClick={()=>onNav("printplan")} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${C.gold}44`,background:C.gold+"12",color:C.gold,fontWeight:850,cursor:"pointer"}}>训练单</button>
+              </div>
+            </div>
+            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+              <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:10}}>优先修复</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {plan.focus.map(t=>(
+                  <div key={t.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 54px",gap:8,alignItems:"center"}}>
+                    <button onClick={()=>onNav("detail",t.id)}
+                      style={{textAlign:"left",padding:"8px 10px",borderRadius:9,border:`1px solid ${t.color}25`,background:C.s2,color:t.color,fontWeight:850,cursor:"pointer",overflowWrap:"anywhere"}}>
+                      {t.name}
+                    </button>
+                    <span style={{fontSize:12,color:t.wrongCount?C.red:C.muted,textAlign:"right"}}>
+                      {t.wrongCount?`${t.wrongCount}错`:`${t.freq}%`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12}}>
+            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+              <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:10}}>里程碑检查</div>
+              {plan.milestones.map(m=>(
+                <div key={m.label} style={{display:"grid",gridTemplateColumns:"58px minmax(0,1fr)",gap:10,marginBottom:10}}>
+                  <div style={{fontSize:13,color:C.gold,fontWeight:900}}>第 {m.day} 天</div>
+                  <div>
+                    <div style={{fontSize:14,color:C.text,fontWeight:900}}>{m.label}</div>
+                    <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>{m.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+              <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:10}}>动态调整</div>
+              <div style={{fontSize:14,color:C.text,lineHeight:1.8,marginBottom:12}}>{plan.dynamic}</div>
+              <div style={{padding:12,borderRadius:10,background:C.gold+"10",border:`1px solid ${C.gold}30`,fontSize:13,color:C.text,lineHeight:1.8}}>
+                家长摘要：{plan.parentBrief}
+              </div>
+              <button onClick={()=>onNav("agent")}
+                style={{marginTop:12,padding:"8px 12px",borderRadius:9,border:"none",background:C.purple,color:"white",fontWeight:850,cursor:"pointer"}}>
+                问 AI 学伴怎么执行
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function PagePrintPlanLegacy({onNav, mastered=new Set(), wrongSet=new Set(), basicWrongSet=new Set()}) {
   const {isMobile}=useBP();
   const today=new Date().toLocaleDateString("zh-CN");
@@ -3002,7 +3266,7 @@ function PagePrintPlan({onNav, mastered=new Set(), wrongSet=new Set(), basicWron
         </button>
         <button onClick={()=>onNav("plan")}
           style={{padding:"8px 14px",borderRadius:9,cursor:"pointer",background:C.purple+"12",color:C.purple,border:`1px solid ${C.purple}44`,fontWeight:800}}>
-          反向规划
+          AI 计划
         </button>
         <button onClick={print}
           style={{marginLeft:isMobile?0:"auto",padding:"10px 18px",borderRadius:10,cursor:"pointer",background:C.gold,color:"#111",border:"none",fontWeight:950}}>
@@ -5410,17 +5674,38 @@ function PageMethods({onNav}) {
    PAGE: PRACTICE
 ════════════════════════════════════════════════════════════ */
 function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters,highlightQId,clearHighlight}) {
-  const [localF,setLocalF]=useState({topic:"all",year:"all",city:"all",type:"all",diff:"all",mode:"all"});
+  const [localF,setLocalF]=useState(PRACTICE_FILTER_DEFAULT);
   useEffect(()=>{
     if(!highlightQId)return;
-    const el=document.querySelector(`[data-qid="${highlightQId}"]`);
-    if(el){
-      el.scrollIntoView({behavior:"smooth",block:"center"});
-      el.style.transition="box-shadow 0.3s";
-      el.style.boxShadow="0 0 0 3px #60a5fa88";
-      setTimeout(()=>{el.style.boxShadow="";if(clearHighlight)clearHighlight();},5000);
+    let tries=0;
+    let done=false;
+    let clearTimer=null;
+    const run=()=>{
+      if(done)return;
+      const el=document.querySelector(`[data-qid="${highlightQId}"]`);
+      if(el){
+        done=true;
+        el.scrollIntoView({behavior:"smooth",block:"center"});
+        el.style.transition="box-shadow 0.3s, border-color 0.3s";
+        el.style.boxShadow="0 0 0 3px #60a5fa88";
+        el.style.borderColor="#60a5fa";
+        clearTimer=setTimeout(()=>{
+          el.style.boxShadow="";
+          el.style.borderColor="";
+          if(clearHighlight)clearHighlight();
+        },5000);
+        return;
+      }
+      tries+=1;
+      if(tries<10)setTimeout(run,120);
+      else if(clearHighlight)clearHighlight();
+    };
+    run();
+    return()=>{
+      done=true;
+      if(clearTimer)clearTimeout(clearTimer);
     }
-  },[highlightQId]);
+  },[highlightQId,clearHighlight]);
   const f=filters||localF;
   const setF=(key,val)=>{
     const upd={...(filters||localF),[key]:val};
@@ -6558,7 +6843,7 @@ const NAV=[
   {id:"printplan",label:"训练单",icon:"📄"},
   {id:"methods",label:"23种方法",icon:"⚙"},
   {id:"diag",label:"智能诊断",icon:"◈"},
-  {id:"plan",label:"反向规划",icon:"◇"},
+  {id:"plan",label:"AI 计划",icon:"◇"},
   {id:"paper",label:"试卷分析",icon:"📄"},
   {id:"ocr",label:"作业识别",icon:"📸"},
   {id:"sprint",label:"考前冲刺",icon:"🔥"},
@@ -6570,7 +6855,7 @@ const PORTAL_NAV=[
   {id:"math",label:"数学",icon:"∑"},
   {id:"english",label:"英语",icon:"A"},
   {id:"wechat",label:"微信 AI",icon:"⌁"},
-  {id:"plan",label:"反向规划",icon:"◎"},
+  {id:"plan",label:"AI计划",icon:"◎"},
   {id:"me",label:"我的",icon:"👤"},
 ];
 const PORTAL_SHELL_VIEWS = new Set(["home","english","wechat","me","plan"]);
@@ -6988,7 +7273,7 @@ function PortalSidebar({navigate, authUser, onOpenAuth}){
       <SectionLabel color={C.geo}>通用能力</SectionLabel>
       <div style={{padding:"0 10px"}}>
         <RowButton icon="⌁" label="微信 AI 教练" sub="绑定后在微信里收提醒、发题、沟通" color={C.geo} onClick={()=>navigate("me")}/>
-        <RowButton icon="◎" label="反向规划" sub="目标、时间、测评共同生成路线" color={C.purple} onClick={()=>navigate("plan")}/>
+        <RowButton icon="◎" label="AI 学习计划" sub="画像、错题、测评共同生成路线" color={C.purple} onClick={()=>navigate("plan")}/>
       </div>
 
       <SectionLabel>系统阶段</SectionLabel>
@@ -11995,7 +12280,7 @@ function AuthModal({onClose, onLogin, initialTab="login"}) {
                 {loading?"登录中...":"账号登录"}
               </button>
               <div style={{fontSize:13,color:authTheme.muted,textAlign:"center"}}>
-                第一次使用？可以直接注册账号，后续保存学习树、错因修复和反向规划。
+                第一次使用？可以直接注册账号，后续保存学习树、错因修复和 AI 计划。
               </div>
             </div>
           )}
@@ -13170,7 +13455,11 @@ export default function App() {
   const [detailId,setDetailId]=useState(null);
   const [prevView,setPrevView]=useState("home");
   const viewRef=useRef("home");
-  const [practiceF,setPracticeF]=useState({topic:"all",year:"all",city:"all",type:"all",diff:"all",mode:"all"});
+  const [practiceF,setPracticeF]=useState(()=>{
+    try{
+      return {...PRACTICE_FILTER_DEFAULT,...JSON.parse(localStorage.getItem("shumai_practice_filters")||"{}")};
+    }catch{return PRACTICE_FILTER_DEFAULT;}
+  });
   const [lastPracticeQId,setLastPracticeQId]=useState(null);
   const bp = useWindowSize();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -13214,6 +13503,9 @@ export default function App() {
   useEffect(()=>{ saveStorage({wrongSet:[...wrongSet]}); },[wrongSet]);
   useEffect(()=>{ saveStorage({basicWrongSet:[...basicWrongSet]}); },[basicWrongSet]);
   useEffect(()=>{ viewRef.current=view; if(view!=="admin") saveStorage({lastView:view}); },[view]);
+  useEffect(()=>{
+    try{localStorage.setItem("shumai_practice_filters",JSON.stringify(practiceF));}catch{}
+  },[practiceF]);
 
   // AI 模型选择（从 localStorage 恢复上次的选择和 Key）
   const [aiModel,setAiModel]=useState(_saved.aiModel||"deepseek-chat");
@@ -13933,7 +14225,7 @@ export default function App() {
           {view==="math"&&<PageMathHome mastered={mastered} wrongSet={wrongSet} progress={0} onNav={navigate} onSearchPick={handleSearchPick}/>}
           {view==="english"&&<PageEnglish onNav={navigate}/>}
           {view==="wechat"&&<PageWechatCoach authUser={authUser} authToken={authToken} onOpenAuth={()=>openAuth("login")} onNav={navigate}/>}
-          {view==="plan"&&<PageReversePlan onNav={navigate}/>}
+          {view==="plan"&&<PagePlan onNav={navigate} mastered={mastered} wrongSet={wrongSet} basicWrongSet={basicWrongSet} authUser={authUser}/>}
           {view==="printplan"&&<PagePrintPlan onNav={navigate} mastered={mastered} wrongSet={wrongSet} basicWrongSet={basicWrongSet}/>}
           {view==="me"&&<PageMe
             mastered={mastered} wrongSet={wrongSet} basicWrongSet={basicWrongSet}
