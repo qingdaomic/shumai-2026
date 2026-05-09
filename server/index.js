@@ -19,6 +19,7 @@ import parentRouter from './api/parent.js';
 import subscriptionRouter from './api/subscription.js';
 import svgRouter from './api/svg.js';
 import skillsRouter from './api/skills.js';
+import petRouter from './api/pet.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -52,6 +53,7 @@ app.use('/api/parent', parentRouter);
 app.use('/api/subscription', subscriptionRouter);
 app.use('/api/svg', svgRouter);
 app.use('/api/skills', skillsRouter);
+app.use('/api/pet', petRouter);
 
 // 全局错误处理
 app.use((err, req, res, next) => {

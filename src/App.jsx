@@ -11839,7 +11839,7 @@ function awardLearningPetXp({type, xp, label, id, mode=PET_MODES.happy, oncePerD
     localStorage.setItem(PET_REWARD_LOG_KEY, JSON.stringify({...log,[rewardKey]:Date.now()}));
   } catch {}
   window.dispatchEvent(new CustomEvent("shumai-pet-xp", {
-    detail: { type, xp, label: label || "完成了一次有效学习", id, mode, at: Date.now() },
+    detail: { type, xp, label: label || "完成了一次有效学习", id, mode, rewardKey, at: Date.now() },
   }));
 }
 
@@ -11900,7 +11900,7 @@ function PetSprite({species,mode,level}) {
   );
 }
 
-function LearningPet() {
+function LearningPet({authToken}) {
   const {isMobile}=useBP();
   const [pet,setPet]=useState(()=>loadPetState(!isMobile));
   const [rulesOpen,setRulesOpen]=useState(false);
@@ -11916,26 +11916,79 @@ function LearningPet() {
     } catch {}
   },[pet]);
 
+  const syncPetStateToCloud=useCallback((state)=>{
+    if(!authToken) return;
+    fetch(`${BACKEND_URL}/api/pet`,{
+      method:"PUT",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${authToken}`},
+      body:JSON.stringify({
+        species:state.species,
+        mode:state.mode,
+        xp:state.xp,
+        level:petLevel(state.xp),
+        lastReward:state.lastReward,
+      }),
+    }).catch(()=>{});
+  },[authToken]);
+
+  const syncPetEventToCloud=useCallback((detail)=>{
+    if(!authToken || !detail?.type || !detail?.rewardKey) return;
+    fetch(`${BACKEND_URL}/api/pet/events`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${authToken}`},
+      body:JSON.stringify({
+        type:detail.type,
+        eventKey:detail.rewardKey,
+        xpDelta:detail.xp,
+        label:detail.label,
+        meta:{ id:detail.id || "", mode:detail.mode || "", source:"learning_pet" },
+      }),
+    }).catch(()=>{});
+  },[authToken]);
+
+  useEffect(()=>{
+    if(!authToken) return;
+    let alive=true;
+    fetch(`${BACKEND_URL}/api/pet`,{headers:{"Authorization":`Bearer ${authToken}`}})
+      .then(r=>r.ok?r.json():null)
+      .then(state=>{
+        if(!alive || !state) return;
+        setPet(prev=>({
+          ...prev,
+          species:state.species || prev.species,
+          mode:state.mode || prev.mode,
+          xp:Math.max(Number(prev.xp || 0), Number(state.xp || 0)),
+          lastReward:state.lastReward || prev.lastReward,
+        }));
+      })
+      .catch(()=>{});
+    return()=>{alive=false;};
+  },[authToken]);
+
   useEffect(()=>{
     const onReward=(e)=>{
       const detail=e.detail || {};
       const xp=Number(detail.xp || 0);
       if(!xp) return;
-      setPet(prev=>({
-        ...prev,
-        xp: Math.max(0, Number(prev.xp || 0) + xp),
-        mode: detail.mode || PET_MODES.happy,
-        open: prev.open,
-        lastReward: {
-          xp,
-          label: detail.label || "有效学习",
-          at: detail.at || Date.now(),
-        },
-      }));
+      syncPetEventToCloud(detail);
+      setPet(prev=>{
+        const next={
+          ...prev,
+          xp: Math.max(0, Number(prev.xp || 0) + xp),
+          mode: detail.mode || PET_MODES.happy,
+          open: prev.open,
+          lastReward: {
+            xp,
+            label: detail.label || "有效学习",
+            at: detail.at || Date.now(),
+          },
+        };
+        return next;
+      });
     };
     window.addEventListener("shumai-pet-xp", onReward);
     return()=>window.removeEventListener("shumai-pet-xp", onReward);
-  },[]);
+  },[syncPetEventToCloud, syncPetStateToCloud]);
 
   useEffect(()=>{
     const onMode=(e)=>{
@@ -11956,8 +12009,16 @@ function LearningPet() {
     return()=>window.removeEventListener("shumai-pet-mode", onMode);
   },[]);
 
-  const setMode=(mode)=>setPet(prev=>({...prev,mode}));
-  const switchSpecies=()=>setPet(prev=>({...prev,species:prev.species==="cat"?"dog":"cat"}));
+  const setMode=(mode)=>setPet(prev=>{
+    const next={...prev,mode};
+    syncPetStateToCloud(next);
+    return next;
+  });
+  const switchSpecies=()=>setPet(prev=>{
+    const next={...prev,species:prev.species==="cat"?"dog":"cat"};
+    syncPetStateToCloud(next);
+    return next;
+  });
 
   if(!pet.open) {
     return (
@@ -13057,7 +13118,7 @@ export default function App() {
           {view==="admin"&&<ErrorBoundary label="后台管理"><PageAdmin onNav={navigate}/></ErrorBoundary>}
           {view==="morning"&&<PageMorning mastered={mastered} wrongSet={wrongSet} basicWrongSet={basicWrongSet}/>}
         </main>
-        <LearningPet/>
+        <LearningPet authToken={authToken}/>
         <AIFloat context={detailId ? {topicName: TOPIC_MAP[detailId]?.name} : null}/>
       </div>
       {/* 手机端底部 Tab 栏 */}
