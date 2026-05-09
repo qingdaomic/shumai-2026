@@ -1762,6 +1762,14 @@ function PageMorning({mastered,wrongSet,basicWrongSet}) {
       const ns = _m.lastDate===yesterday ? streak+1 : 1;
       setStreak(ns); setDoneToday(true);
       saveM({weakMap:nw,streak:ns,lastDate:today,doneToday:true});
+      awardLearningPetXp({
+        type: "morning_done",
+        id: today,
+        xp: 20,
+        label: "完成今日晨读",
+        mode: PET_MODES.happy,
+        oncePerDay: true,
+      });
       setStep("done");
     }
   };
@@ -11748,6 +11756,7 @@ function VideoExplainButton({questionId, title="视频讲解"}) {
 }
 
 const PET_STORAGE_KEY = "shumai_learning_pet_v1";
+const PET_REWARD_LOG_KEY = "shumai_learning_pet_rewards_v1";
 const PET_MODES = {
   idle: "idle",
   thinking: "thinking",
@@ -11773,11 +11782,26 @@ function loadPetState(defaultOpen=true) {
       mode: saved.mode || PET_MODES.idle,
       xp: Number(saved.xp || 0),
       open: typeof saved.open === "boolean" ? saved.open : defaultOpen,
+      lastReward: saved.lastReward || null,
       lastSeen: saved.lastSeen || "",
     };
   } catch {
-    return { name: "树脉学伴", species: "cat", mode: PET_MODES.idle, xp: 0, open: defaultOpen, lastSeen: "" };
+    return { name: "树脉学伴", species: "cat", mode: PET_MODES.idle, xp: 0, open: defaultOpen, lastReward: null, lastSeen: "" };
   }
+}
+
+function awardLearningPetXp({type, xp, label, id, mode=PET_MODES.happy, oncePerDay=false}) {
+  if (!type || !xp) return;
+  const day = new Date().toDateString();
+  const rewardKey = `${type}:${id || "global"}${oncePerDay?`:${day}`:""}`;
+  try {
+    const log = JSON.parse(localStorage.getItem(PET_REWARD_LOG_KEY) || "{}");
+    if (log[rewardKey]) return;
+    localStorage.setItem(PET_REWARD_LOG_KEY, JSON.stringify({...log,[rewardKey]:Date.now()}));
+  } catch {}
+  window.dispatchEvent(new CustomEvent("shumai-pet-xp", {
+    detail: { type, xp, label: label || "完成了一次有效学习", id, mode, at: Date.now() },
+  }));
 }
 
 function petLevel(xp) {
@@ -11837,6 +11861,27 @@ function LearningPet() {
     } catch {}
   },[pet]);
 
+  useEffect(()=>{
+    const onReward=(e)=>{
+      const detail=e.detail || {};
+      const xp=Number(detail.xp || 0);
+      if(!xp) return;
+      setPet(prev=>({
+        ...prev,
+        xp: Math.max(0, Number(prev.xp || 0) + xp),
+        mode: detail.mode || PET_MODES.happy,
+        open: prev.open,
+        lastReward: {
+          xp,
+          label: detail.label || "有效学习",
+          at: detail.at || Date.now(),
+        },
+      }));
+    };
+    window.addEventListener("shumai-pet-xp", onReward);
+    return()=>window.removeEventListener("shumai-pet-xp", onReward);
+  },[]);
+
   const setMode=(mode)=>setPet(prev=>({...prev,mode}));
   const switchSpecies=()=>setPet(prev=>({...prev,species:prev.species==="cat"?"dog":"cat"}));
 
@@ -11874,6 +11919,12 @@ function LearningPet() {
         <div style={{fontSize:13,color:C.text,lineHeight:1.6,fontWeight:750,marginBottom:10}}>
           {modeInfo.text}
         </div>
+        {pet.lastReward&&(
+          <div style={{padding:"7px 9px",borderRadius:9,background:C.ok+"10",border:`1px solid ${C.ok}24`,
+            color:C.ok,fontSize:12,fontWeight:850,marginBottom:10,lineHeight:1.5}}>
+            +{pet.lastReward.xp} XP · {pet.lastReward.label}
+          </div>
+        )}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6}}>
           <span style={{fontSize:12,color:C.muted}}>Lv.{level} · {petStage(level)}</span>
           <span style={{fontSize:12,color:C.dim}}>{pet.xp}/{nextXp} XP</span>
@@ -12361,6 +12412,15 @@ export default function App() {
   const toggleM=useCallback(id=>{
     const nowM=!masteredRef.current.has(id);
     setMastered(p=>{const n=new Set(p);nowM?n.add(id):n.delete(id);return n;});
+    if(nowM) {
+      awardLearningPetXp({
+        type: "topic_mastered",
+        id,
+        xp: 30,
+        label: `掌握 ${TOPIC_MAP[id]?.name || "一个知识点"}`,
+        mode: PET_MODES.happy,
+      });
+    }
     cloudW('PUT',`/api/progress/${encodeURIComponent(id)}`,{mastered:nowM,score:nowM?100:0});
   },[]);
   const addWrong=useCallback(id=>{
@@ -12368,7 +12428,18 @@ export default function App() {
     cloudW('POST','/api/progress/wrong',{questionId:String(id),questionType:'exam'});
   },[]);
   const removeWrong=useCallback(id=>{
-    setWrongSet(p=>{const n=new Set(p);n.delete(id);return n;});
+    setWrongSet(p=>{
+      const existed=p.has(id);
+      const n=new Set(p);n.delete(id);
+      if(existed) awardLearningPetXp({
+        type: "wrong_fixed",
+        id,
+        xp: 15,
+        label: "完成一道错题订正",
+        mode: PET_MODES.happy,
+      });
+      return n;
+    });
     cloudW('DELETE',`/api/progress/wrong/${encodeURIComponent(id)}`);
   },[]);
   const addBasicWrong=useCallback(id=>{
@@ -12376,7 +12447,18 @@ export default function App() {
     cloudW('POST','/api/progress/wrong',{questionId:id,questionType:'basic'});
   },[]);
   const removeBasicWrong=useCallback(id=>{
-    setBasicWrongSet(p=>{const n=new Set(p);n.delete(id);return n;});
+    setBasicWrongSet(p=>{
+      const existed=p.has(id);
+      const n=new Set(p);n.delete(id);
+      if(existed) awardLearningPetXp({
+        type: "basic_wrong_fixed",
+        id,
+        xp: 15,
+        label: "修复一道基础错题",
+        mode: PET_MODES.happy,
+      });
+      return n;
+    });
     cloudW('DELETE',`/api/progress/wrong/${encodeURIComponent(id)}`);
   },[]);
 
