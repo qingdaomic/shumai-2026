@@ -263,6 +263,7 @@ V4 目标：
 - [x] **V4.83** 服务器代码目录上线前备份与清单导出：备份 `/opt/shumai` 与 `/var/www/shumai`，导出脏改、落后文件、权限、PM2 与健康检查记录
 - [x] **V4.84** 服务器干净 release 目录方案：设计不覆盖 `/opt/shumai` 的独立 release 验证、构建、PM2 切换和回滚路径
 - [x] **V4.85** 服务器干净 release 目录实操验证：在 `/opt/shumai-releases/` clone 最新 main，完成前端构建、后端依赖与语法检查，不部署不切换
+- [x] **V4.86** 服务器 3002 旁路后端演练：基于干净 release 临时启动 `shumai-api-v4.86`，health 通过后 stop/delete，不保存 PM2 不切换线上
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
