@@ -9211,6 +9211,11 @@ function PageParent({onNav}) {
     {label:"待清除错题",value:`${pendingWrong||0}题`,color:pendingWrong>5?C.red:C.sta},
     {label:"本周新掌握",value:weekly?`+${weekly.weekNewMastered}`:"—",color:C.ok},
   ];
+  const companionGrowth=[
+    {label:"新掌握",value:weekly?`+${weekly.weekNewMastered}`:"—",text:"说明有新的知识点开始变稳。",color:C.ok},
+    {label:"修复错因",value:weekly?`${weekly.weekWrongResolved}`:"—",text:"比“又做了几题”更值得被看见。",color:C.sta},
+    {label:"坚持痕迹",value:weekly?`${weeklyCheckins.length}天`:"—",text:"有出现、有开始，就已经在建立节奏。",color:C.geo},
+  ];
   const parentScripts=[
     {label:"可以这样说",text:currentAdvice.encourage||"你今天先把一个点修稳就很好，我们不急着证明都会。",color:C.ok},
     {label:"暂时别这样催",text:currentAdvice.avoid||"不要问“怎么又错了”，先把问题缩小到一个可修复动作。",color:C.red},
@@ -9426,6 +9431,29 @@ function PageParent({onNav}) {
                     </div>
                   </>
                 )}
+              </div>
+
+              <div style={panel(C.geo,{padding:16})}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}>
+                  <div>
+                    <div style={{fontSize:12,color:C.geo,fontWeight:950}}>学伴成长信号</div>
+                    <div style={{fontSize:18,fontWeight:950,color:C.text,marginTop:4}}>看见努力，不做排名</div>
+                  </div>
+                  <div style={{fontSize:12,color:C.muted}}>给家长看的鼓励证据</div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10}}>
+                  {companionGrowth.map(item=>(
+                    <div key={item.label} style={{padding:13,borderRadius:10,background:`${item.color}10`,border:`1px solid ${item.color}2f`}}>
+                      <div style={{fontSize:12,color:item.color,fontWeight:950}}>{item.label}</div>
+                      <div style={{fontSize:26,fontWeight:950,color:item.color,marginTop:4}}>{item.value}</div>
+                      <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginTop:4}}>{item.text}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{marginTop:12,padding:"10px 12px",borderRadius:10,background:C.s2,border:`1px solid ${C.border}`,
+                  fontSize:13,color:C.text,lineHeight:1.7}}>
+                  今晚可以先肯定一个具体动作：不是“你真聪明”，而是“你今天把一个错因修回来了，这很踏实”。
+                </div>
               </div>
             </div>
           )}
@@ -11765,6 +11793,7 @@ function VideoExplainButton({questionId, title="视频讲解"}) {
 
 const PET_STORAGE_KEY = "shumai_learning_pet_v1";
 const PET_REWARD_LOG_KEY = "shumai_learning_pet_rewards_v1";
+const PET_ACTIVITY_LOG_KEY = "shumai_learning_pet_activity_v1";
 const PET_MODES = {
   idle: "idle",
   thinking: "thinking",
@@ -11786,6 +11815,13 @@ const PET_XP_RULES = [
   { label: "订正错题", xp: 15 },
   { label: "修复基础错题", xp: 15 },
   { label: "完成晨读", xp: 20 },
+];
+
+const PET_GROWTH_BADGES = [
+  { minLevel: 1, label: "开始愿意修一个点", text: "能从一个小目标开始，就是成长的起点。" },
+  { minLevel: 3, label: "能完成有效订正", text: "开始把错题变成可修复动作。" },
+  { minLevel: 6, label: "会主动找突破口", text: "遇到卡点时，能先问下一步。" },
+  { minLevel: 10, label: "形成复盘节奏", text: "学习开始从做题走向稳定复盘。" },
 ];
 
 const PET_SKILL_ACTIONS = [
@@ -11833,13 +11869,18 @@ function awardLearningPetXp({type, xp, label, id, mode=PET_MODES.happy, oncePerD
   if (!type || !xp) return;
   const day = new Date().toDateString();
   const rewardKey = `${type}:${id || "global"}${oncePerDay?`:${day}`:""}`;
+  const at = Date.now();
+  const rewardLabel = label || "完成了一次有效学习";
   try {
     const log = JSON.parse(localStorage.getItem(PET_REWARD_LOG_KEY) || "{}");
     if (log[rewardKey]) return;
-    localStorage.setItem(PET_REWARD_LOG_KEY, JSON.stringify({...log,[rewardKey]:Date.now()}));
+    localStorage.setItem(PET_REWARD_LOG_KEY, JSON.stringify({...log,[rewardKey]:at}));
+    const activity = JSON.parse(localStorage.getItem(PET_ACTIVITY_LOG_KEY) || "[]");
+    const nextActivity = [{type, xp, label:rewardLabel, id:id || "", rewardKey, at}, ...activity].slice(0, 80);
+    localStorage.setItem(PET_ACTIVITY_LOG_KEY, JSON.stringify(nextActivity));
   } catch {}
   window.dispatchEvent(new CustomEvent("shumai-pet-xp", {
-    detail: { type, xp, label: label || "完成了一次有效学习", id, mode, rewardKey, at: Date.now() },
+    detail: { type, xp, label: rewardLabel, id, mode, rewardKey, at },
   }));
 }
 
@@ -11867,6 +11908,26 @@ function petStage(level) {
   if (level <= 5) return "成长期";
   if (level <= 9) return "进阶期";
   return "自信期";
+}
+
+function readPetActivitySummary() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(PET_ACTIVITY_LOG_KEY) || "[]");
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const week = rows.filter(item => Number(item.at || 0) >= weekAgo);
+    const countType = type => week.filter(item => item.type === type).length;
+    return {
+      rows,
+      week,
+      weekXp: week.reduce((sum,item)=>sum + Number(item.xp || 0), 0),
+      mastered: countType("topic_mastered"),
+      wrongFixed: countType("wrong_fixed") + countType("basic_wrong_fixed"),
+      morningDone: countType("morning_done"),
+      latest: rows.slice(0, 3),
+    };
+  } catch {
+    return { rows: [], week: [], weekXp: 0, mastered: 0, wrongFixed: 0, morningDone: 0, latest: [] };
+  }
 }
 
 function PetSprite({species,mode,level}) {
@@ -11904,11 +11965,15 @@ function LearningPet({authToken}) {
   const {isMobile}=useBP();
   const [pet,setPet]=useState(()=>loadPetState(!isMobile));
   const [rulesOpen,setRulesOpen]=useState(false);
+  const [galleryOpen,setGalleryOpen]=useState(false);
+  const [activitySummary,setActivitySummary]=useState(()=>readPetActivitySummary());
   const level=petLevel(pet.xp);
   const nextXp=level*80;
   const currentBase=(level-1)*80;
   const pct=Math.min(100,Math.round((pet.xp-currentBase)/(nextXp-currentBase)*100));
   const modeInfo=PET_MODE_COPY[pet.mode] || PET_MODE_COPY.idle;
+  const unlockedBadges=PET_GROWTH_BADGES.filter(badge=>level>=badge.minLevel);
+  const activeBadge=unlockedBadges[unlockedBadges.length-1] || PET_GROWTH_BADGES[0];
 
   useEffect(()=>{
     try {
@@ -11971,6 +12036,7 @@ function LearningPet({authToken}) {
       const xp=Number(detail.xp || 0);
       if(!xp) return;
       syncPetEventToCloud(detail);
+      setActivitySummary(readPetActivitySummary());
       setPet(prev=>{
         const next={
           ...prev,
@@ -12065,6 +12131,43 @@ function LearningPet({authToken}) {
           <span style={{fontSize:12,color:C.dim}}>{pet.xp}/{nextXp} XP</span>
         </div>
         <Bar v={pct} color={modeInfo.color} h={5}/>
+        <button onClick={()=>setGalleryOpen(v=>!v)}
+          style={{width:"100%",marginTop:10,padding:"8px 9px",borderRadius:9,
+            border:`1px solid ${modeInfo.color}35`,background:modeInfo.color+"10",color:C.text,
+            cursor:"pointer",fontSize:12,fontWeight:900,textAlign:"left",
+            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>成长图鉴</span>
+          <span style={{color:modeInfo.color}}>{galleryOpen?"收起":"查看"}</span>
+        </button>
+        {galleryOpen&&(
+          <div style={{marginTop:7,display:"grid",gap:7}}>
+            <div style={{padding:"8px 9px",borderRadius:9,background:C.bg,border:`1px solid ${modeInfo.color}30`}}>
+              <div style={{fontSize:12,color:modeInfo.color,fontWeight:950}}>{activeBadge.label}</div>
+              <div style={{fontSize:11,color:C.muted,lineHeight:1.5,marginTop:3}}>{activeBadge.text}</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:5}}>
+              {[
+                {label:"本周XP",value:activitySummary.weekXp,color:C.ok},
+                {label:"掌握",value:activitySummary.mastered,color:C.geo},
+                {label:"修复",value:activitySummary.wrongFixed,color:C.sta},
+              ].map(item=>(
+                <div key={item.label} style={{padding:"6px 4px",borderRadius:8,background:C.s2,border:`1px solid ${C.border}`,textAlign:"center"}}>
+                  <div style={{fontSize:14,fontWeight:950,color:item.color}}>{item.value}</div>
+                  <div style={{fontSize:10,color:C.dim,marginTop:2}}>{item.label}</div>
+                </div>
+              ))}
+            </div>
+            {activitySummary.latest.length>0&&(
+              <div style={{display:"grid",gap:5}}>
+                {activitySummary.latest.map(item=>(
+                  <div key={item.rewardKey} style={{fontSize:11,color:C.muted,lineHeight:1.45,padding:"5px 7px",borderRadius:7,background:C.bg}}>
+                    +{item.xp} XP · {item.label}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div style={{display:"grid",gap:6,marginTop:10}}>
           {PET_SKILL_ACTIONS.map(action=>(
             <button key={action.id} onClick={()=>triggerLearningPetSkillAction(action)}
