@@ -2879,8 +2879,16 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
     <div style={{padding:isMobile?12:28,maxWidth:1120,margin:"0 auto",width:"100%"}}>
       <div style={{border:`1px solid ${C.geo}24`,borderRadius:18,padding:isMobile?"18px 16px":"24px 28px",
         background:`linear-gradient(135deg,${C.geo}10,${C.alg}08)`,marginBottom:14}}>
-        <div style={{fontSize:12,color:C.geo,letterSpacing:3,textTransform:"uppercase",fontWeight:800}}>PagePlan V2</div>
-        <h1 style={{margin:"6px 0 8px",fontSize:isMobile?24:30,color:C.text,fontWeight:950}}>个性化学习计划</h1>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:12,color:C.geo,letterSpacing:3,textTransform:"uppercase",fontWeight:800}}>PagePlan V2</div>
+            <h1 style={{margin:"6px 0 8px",fontSize:isMobile?24:30,color:C.text,fontWeight:950}}>个性化学习计划</h1>
+          </div>
+          <button onClick={()=>onNav("math")}
+            style={{padding:"8px 12px",borderRadius:10,border:`1px solid ${C.border}`,background:C.s2,color:C.text,fontWeight:850,cursor:"pointer"}}>
+            返回数学驾驶舱
+          </button>
+        </div>
         <p style={{margin:0,fontSize:14,color:C.muted,lineHeight:1.8,maxWidth:760}}>
           先采集学生画像，再把诊断、错题、知识树和每日任务合成一条可执行路线。目标不是多做题，而是每天知道下一步修哪里。
         </p>
