@@ -236,7 +236,10 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
                COUNT(*) FILTER (WHERE event_type = 'helpful')::int AS pet_helpful,
                COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS pet_not_helpful,
                COUNT(*) FILTER (WHERE meta->>'entry_point' = 'question_coach_suggestion')::int AS question_coach_events,
-               COUNT(*) FILTER (WHERE meta->>'entry_point' = 'learning_pet_panel')::int AS pet_panel_events
+               COUNT(*) FILTER (WHERE meta->>'entry_point' = 'learning_pet_panel')::int AS pet_panel_events,
+               COUNT(*) FILTER (WHERE meta->>'entry_point' = 'ai_float')::int AS ai_float_events,
+               COUNT(*) FILTER (WHERE meta->>'entry_point' = 'ai_float_feedback')::int AS ai_float_feedback_events,
+               COUNT(*) FILTER (WHERE COALESCE(meta->>'entry_point', '') = '')::int AS unknown_entry_events
         FROM prompt_skill_events
         WHERE created_at >= NOW() - INTERVAL '30 days'
           AND meta->>'entry' = 'learning_pet'
@@ -244,7 +247,8 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
       )
       SELECT s.id, s.skill_key, s.name, s.type, s.scene, s.topic_code, s.weight, s.status,
              ps.pet_events, ps.pet_clicks, ps.pet_ai_used, ps.pet_helpful, ps.pet_not_helpful,
-             ps.question_coach_events, ps.pet_panel_events,
+             ps.question_coach_events, ps.pet_panel_events, ps.ai_float_events,
+             ps.ai_float_feedback_events, ps.unknown_entry_events,
              ROUND((
                (ps.pet_clicks * 0.5)
                + (ps.pet_ai_used * 1.2)
@@ -265,7 +269,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
       LIMIT 8
     `;
 
-    const [list, totals, byType, byScene, eventTotals, bySource, petWatchlist] = await Promise.all([
+    const [list, totals, byType, byScene, eventTotals, bySource, byEntryPoint, petWatchlist] = await Promise.all([
       pool.query(listSql, params),
       pool.query(
         `SELECT COUNT(*)::int AS total,
@@ -309,6 +313,19 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
          GROUP BY source
          ORDER BY events DESC, source ASC`
       ),
+      pool.query(
+        `SELECT COALESCE(NULLIF(meta->>'entry_point', ''), 'unknown') AS entry_point,
+                COUNT(*)::int AS events,
+                COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks,
+                COUNT(*) FILTER (WHERE event_type = 'ai_used')::int AS ai_used,
+                COUNT(*) FILTER (WHERE event_type = 'helpful')::int AS helpful,
+                COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS not_helpful
+         FROM prompt_skill_events
+         WHERE created_at >= NOW() - INTERVAL '30 days'
+           AND meta->>'entry' = 'learning_pet'
+         GROUP BY entry_point
+         ORDER BY events DESC, entry_point ASC`
+      ),
       pool.query(petWatchlistSql),
     ]);
 
@@ -321,6 +338,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
         student_frontend: Number(totals.rows[0]?.student_frontend || 0),
         events: eventTotals.rows[0] || {},
         bySource: bySource.rows,
+        byEntryPoint: byEntryPoint.rows,
         petWatchlist: petWatchlist.rows,
         byType: byType.rows,
         byScene: byScene.rows,

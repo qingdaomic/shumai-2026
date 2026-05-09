@@ -10382,6 +10382,11 @@ function PageAdmin({onNav}) {
                 来源 {skillSourceLabel(item.source)} · {item.events}
               </span>
             ))}
+            {(skillSummary?.byEntryPoint||[]).slice(0,5).map(item=>(
+              <span key={item.entry_point} style={{padding:"4px 8px",borderRadius:999,background:C.purple+"10",border:`1px solid ${C.purple}26`,color:C.purple}}>
+                学伴入口 {skillEntryPointLabel(item.entry_point)} · {item.events}
+              </span>
+            ))}
             {(skillSummary?.byType||[]).slice(0,6).map(item=>(
               <span key={item.type} style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
                 {item.type} · {item.total} · 权重均值 {item.avg_weight}
@@ -10870,6 +10875,17 @@ function skillSourceLabel(source) {
   return map[source] || source || "未知";
 }
 
+function skillEntryPointLabel(entryPoint) {
+  const map={
+    learning_pet_panel:"学伴面板",
+    question_coach_suggestion:"题目页",
+    ai_float:"AI浮窗",
+    ai_float_feedback:"反馈按钮",
+    unknown:"未知",
+  };
+  return map[entryPoint] || entryPoint || "未知";
+}
+
 function PetSkillWatchlist({items=[],onFocus}) {
   if(!items.length) {
     return (
@@ -10912,7 +10928,7 @@ function PetSkillWatchlist({items=[],onFocus}) {
               <span style={{color:C.red}}>弱 {item.pet_not_helpful||0}</span>
             </div>
             <div style={{fontSize:11,color:C.muted,marginTop:6}}>
-              题目页 {item.question_coach_events||0} · 面板 {item.pet_panel_events||0}
+              题目页 {item.question_coach_events||0} · 面板 {item.pet_panel_events||0} · 浮窗 {item.ai_float_events||0} · 反馈 {item.ai_float_feedback_events||0}
             </div>
           </button>
         ))}
