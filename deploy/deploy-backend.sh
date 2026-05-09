@@ -1,17 +1,17 @@
 #!/bin/bash
+set -euo pipefail
 # 部署后端到香港服务器
-SERVER="root@43.128.59.105"
-REMOTE_DIR="/opt/shumai-server"
+SERVER="${SHUMAI_DEPLOY_SERVER:-ubuntu@43.128.59.105}"
+REMOTE_DIR="${SHUMAI_DEPLOY_RELEASE_DIR:-/opt/shumai-releases/current/repo}"
 
 echo "==> 上传后端代码..."
-ssh $SERVER "mkdir -p $REMOTE_DIR"
-scp -r server/* $SERVER:$REMOTE_DIR/
-scp package.json $SERVER:$REMOTE_DIR/
+ssh "$SERVER" "sudo mkdir -p $REMOTE_DIR/server && sudo chown -R \$(whoami):\$(whoami) $REMOTE_DIR"
+scp -r server/* "$SERVER:$REMOTE_DIR/server/"
 
 echo "==> 安装依赖..."
-ssh $SERVER "cd $REMOTE_DIR && npm install --production"
+ssh "$SERVER" "cd $REMOTE_DIR/server && npm install --omit=dev"
 
-echo "==> 重启 PM2..."
-ssh $SERVER "cd $REMOTE_DIR && pm2 restart shumai-api 2>/dev/null || pm2 start index.js --name shumai-api && pm2 save"
+echo "==> 提示：当前线上正式进程名为 shumai-api-v4.94，release 切换需先确认临时 PM2 配置"
+echo "==> 当前脚本仅更新 release 目录中的后端代码，不直接重启线上 PM2"
 
-echo "✅ 后端部署完成"
+echo "✅ 后端代码已同步到 release 目录"

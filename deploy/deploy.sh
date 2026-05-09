@@ -1,20 +1,21 @@
 #!/bin/bash
+set -euo pipefail
 # 一键部署到香港服务器
 # 用法：bash deploy/deploy.sh
 
-SERVER="root@43.128.59.105"
-REMOTE_DIR="/var/www/shumai"
+SERVER="${SHUMAI_DEPLOY_SERVER:-ubuntu@43.128.59.105}"
+REMOTE_DIR="${SHUMAI_DEPLOY_FRONTEND_DIR:-/opt/shumai/dist}"
 
 echo "==> 构建前端..."
 npx vite build
 
 echo "==> 创建远程目录..."
-ssh $SERVER "mkdir -p $REMOTE_DIR"
+ssh "$SERVER" "sudo mkdir -p $REMOTE_DIR && sudo chown -R \$(whoami):\$(whoami) $REMOTE_DIR"
 
 echo "==> 上传 dist/ ..."
-scp -r dist/* $SERVER:$REMOTE_DIR/
+scp -r dist/* "$SERVER:$REMOTE_DIR/"
 
-echo "==> 重载 Nginx..."
-ssh $SERVER "nginx -t && systemctl reload nginx"
+echo "==> 校验发布目标..."
+ssh "$SERVER" "test -f $REMOTE_DIR/index.html && ls -1 $REMOTE_DIR | sed -n '1,5p'"
 
-echo "✅ 部署完成！访问 https://shumai.cc"
+echo "✅ 前端部署完成！当前默认发布目标为 /opt/shumai/dist"

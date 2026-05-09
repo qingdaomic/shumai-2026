@@ -1,6 +1,8 @@
-# 数脉后端部署指南 — 腾讯云/阿里云轻量服务器
+# 树脉后端部署指南 — 腾讯云/阿里云轻量服务器
 
 > 预算 ~¥40/月 | Ubuntu 22.04 | Node.js 20 | PostgreSQL 15 | PM2 + Nginx
+
+> 2026-05-09 校准：当前线上前端静态根目录以 `/opt/shumai/dist` 为准，正式后端进程名为 `shumai-api-v4.94`，PM2 以 root 运行。
 
 ---
 
@@ -76,7 +78,7 @@ EOF
 
 ### 初始化表结构
 ```bash
-sudo -u postgres psql -d shumai -f /www/shumai/server/schema.sql
+sudo -u postgres psql -d shumai -f /opt/shumai-releases/current/repo/server/schema.sql
 ```
 
 ---
@@ -85,27 +87,27 @@ sudo -u postgres psql -d shumai -f /www/shumai/server/schema.sql
 
 ```bash
 # 创建目录
-mkdir -p /www/shumai /www/logs
+mkdir -p /opt/shumai /opt/shumai/dist /var/log/shumai
 
 # 克隆或上传代码（选择一种）
 # 方法A：Git
-cd /www/shumai
+cd /opt/shumai
 git clone https://github.com/your-org/shumai.git .
 
 # 方法B：rsync 本地上传（在本机执行）
 rsync -avz --exclude node_modules --exclude dist \
   /Users/mac/Desktop/中考数学-系统-2026/server/ \
-  root@your_server_ip:/www/shumai/server/
+  root@your_server_ip:/opt/shumai-releases/current/repo/server/
 
 # 安装依赖
-cd /www/shumai/server
+cd /opt/shumai-releases/current/repo/server
 npm install --production
 ```
 
 ### 配置环境变量
 ```bash
-cp /www/shumai/server/env-template.txt /www/shumai/server/.env
-vim /www/shumai/server/.env
+cp /opt/shumai-releases/current/repo/server/env-template.txt /opt/shumai-releases/current/repo/server/.env
+vim /opt/shumai-releases/current/repo/server/.env
 ```
 
 填入以下内容：
@@ -128,10 +130,10 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ## 六、PM2 启动服务
 
 ```bash
-cd /www/shumai/server
+cd /opt/shumai-releases/current/repo/server
 
 # 启动 API 服务
-pm2 start ecosystem.config.cjs --only shumai-api
+pm2 start ecosystem.config.cjs --only shumai-api-v4.94
 
 # 验证启动
 pm2 status
@@ -149,11 +151,11 @@ pm2 save
 
 **常用 PM2 命令：**
 ```bash
-pm2 logs shumai-api        # 查看日志
-pm2 restart shumai-api     # 重启
-pm2 reload shumai-api      # 零停机重载
-pm2 stop shumai-api        # 停止
-pm2 monit                  # 实时监控
+pm2 logs shumai-api-v4.94    # 查看日志
+pm2 restart shumai-api-v4.94  # 重启
+pm2 reload shumai-api-v4.94   # 零停机重载
+pm2 stop shumai-api-v4.94     # 停止
+pm2 monit                     # 实时监控
 ```
 
 ---
@@ -176,23 +178,20 @@ server {
     listen 80;
     server_name your_domain.com www.your_domain.com;
 
-    # API 反向代理
+    root /opt/shumai/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
     location /api/ {
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass http://127.0.0.1:3001/api/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 120s;
-        client_max_body_size 10m;
-    }
-
-    # 健康检查直通
-    location = /health {
-        proxy_pass http://127.0.0.1:3001/api/health;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
@@ -243,7 +242,7 @@ VITE_API_URL = https://your_domain.com
 ```bash
 # 1. 健康检查
 curl https://your_domain.com/api/health
-# 期望: {"status":"ok","name":"数脉后端",...}
+# 期望: {"status":"ok","name":"树脉后端",...}
 
 # 2. 注册接口
 curl -X POST https://your_domain.com/api/auth/register \
@@ -251,8 +250,8 @@ curl -X POST https://your_domain.com/api/auth/register \
   -d '{"phone":"13800138000","password":"test123","name":"测试用户"}'
 
 # 3. 查看日志
-pm2 logs shumai-api --lines 50
-tail -f /www/logs/shumai-err.log
+pm2 logs shumai-api-v4.94 --lines 50
+tail -f /var/log/shumai/shumai-err.log
 ```
 
 ---
@@ -261,25 +260,25 @@ tail -f /www/logs/shumai-err.log
 
 ### 代码更新
 ```bash
-cd /www/shumai/server
-git pull                   # 或 rsync 重新上传
-npm install --production   # 如有新依赖
-pm2 reload shumai-api      # 零停机重载
+cd /opt/shumai-releases/current/repo/server
+git pull                    # 仅 release 目录更新时使用
+npm install --production    # 如有新依赖
+pm2 reload shumai-api-v4.94 # 零停机重载当前正式进程
 ```
 
 ### 数据库备份（每日 cron）
 ```bash
 crontab -e
 # 添加以下行（每天凌晨2点备份）
-0 2 * * * pg_dump -U shumai shumai | gzip > /www/backups/shumai_$(date +\%Y\%m\%d).sql.gz
+0 2 * * * pg_dump -U shumai shumai | gzip > /home/ubuntu/shumai-backups/shumai_$(date +\%Y\%m\%d).sql.gz
 ```
 
 ### 磁盘使用
 ```bash
 df -h
-du -sh /www/logs /www/backups
+du -sh /var/log/shumai /home/ubuntu/shumai-backups
 # 清理30天前的备份
-find /www/backups -name "*.gz" -mtime +30 -delete
+find /home/ubuntu/shumai-backups -name "*.gz" -mtime +30 -delete
 ```
 
 ---
@@ -288,7 +287,7 @@ find /www/backups -name "*.gz" -mtime +30 -delete
 
 | 现象 | 排查命令 |
 |------|---------|
-| API 无响应 | `pm2 status` → `pm2 logs shumai-api` |
+| API 无响应 | `pm2 status` → `pm2 logs shumai-api-v4.94` |
 | 502 Bad Gateway | `curl localhost:3001/api/health` 确认进程存活 |
 | 数据库连接失败 | `psql -U shumai -d shumai -h localhost` |
 | JWT 失效 | 检查 `.env` 中 `JWT_SECRET` 是否变更 |
