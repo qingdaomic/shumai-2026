@@ -266,6 +266,7 @@ V4 目标：
 - [x] **V4.86** 服务器 3002 旁路后端演练：基于干净 release 临时启动 `shumai-api-v4.86`，health 通过后 stop/delete，不保存 PM2 不切换线上
 - [x] **V4.87** 数据库备份与 migration 预检：完成 PostgreSQL 备份，确认 `admin_operation_logs` 未存在，发现线上库缺少 `prompt_skills`
 - [x] **V4.88** 后台操作日志 migration 执行：基于 V4.87 备份创建 `admin_operation_logs`，验证 14 列、6 索引、6 约束与幂等性
+- [x] **V4.89** prompt_skills schema 差异评估：确认 SKE 最小 migration 与 41 条种子 Skill 是正式切换前必补项，本阶段不执行 SQL
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
