@@ -1,7 +1,7 @@
 {
-  "name": "树脉 ShuMai · 中考数学",
+  "name": "树脉 ShuMai · AI 学习教练",
   "short_name": "树脉",
-  "description": "中考数学智能学习系统 — 1334道题，AI讲解，知识图谱",
+  "description": "树脉 ShuMai · 数学与英语 AI 学习教练，帮助学生知道今天学什么、为什么学、怎么补。",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
