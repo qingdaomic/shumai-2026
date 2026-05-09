@@ -268,6 +268,7 @@ V4 目标：
 - [x] **V4.88** 后台操作日志 migration 执行：基于 V4.87 备份创建 `admin_operation_logs`，验证 14 列、6 索引、6 约束与幂等性
 - [x] **V4.89** prompt_skills schema 差异评估：确认 SKE 最小 migration 与 41 条种子 Skill 是正式切换前必补项，本阶段不执行 SQL
 - [x] **V4.90** SKE 最小 schema migration 与种子导入：备份线上库，创建 `prompt_skills` / `prompt_skill_events`，导入 41 条 Skill 并验证幂等性
+- [x] **V4.91** 后台 Skill 管理 3002 旁路验证：启动最新 release 临时 3002，补齐应用用户表权限，验证 Skill 管理、事件记录与操作日志写读后清理
 
 > V4 每次开工前必须读：
 > - `AGENTS.md`
