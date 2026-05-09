@@ -3001,10 +3001,10 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
                   </div>
                 ))}
               </div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:14}}>
-                <button onClick={()=>onNav("practice")} style={{padding:"8px 12px",borderRadius:9,border:"none",background:C.alg,color:"white",fontWeight:850,cursor:"pointer"}}>开始练题</button>
-                <button onClick={()=>onNav("wrong")} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${C.red}44`,background:C.red+"12",color:C.red,fontWeight:850,cursor:"pointer"}}>修复错因</button>
-                <button onClick={()=>onNav("printplan")} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${C.gold}44`,background:C.gold+"12",color:C.gold,fontWeight:850,cursor:"pointer"}}>训练单</button>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(3,minmax(0,1fr))",gap:8,marginTop:14}}>
+                <button onClick={()=>onNav("practice")} style={{padding:"8px 12px",borderRadius:9,border:"none",background:C.alg,color:"white",fontWeight:850,cursor:"pointer",width:"100%"}}>开始练题</button>
+                <button onClick={()=>onNav("wrong")} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${C.red}44`,background:C.red+"12",color:C.red,fontWeight:850,cursor:"pointer",width:"100%"}}>修复错因</button>
+                <button onClick={()=>onNav("printplan")} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${C.gold}44`,background:C.gold+"12",color:C.gold,fontWeight:850,cursor:"pointer",width:"100%"}}>训练单</button>
               </div>
             </div>
             <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:isMobile?14:16}}>
@@ -3045,7 +3045,7 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
                 家长摘要：{plan.parentBrief}
               </div>
               <button onClick={()=>onNav("agent")}
-                style={{marginTop:12,padding:"8px 12px",borderRadius:9,border:"none",background:C.purple,color:"white",fontWeight:850,cursor:"pointer"}}>
+                style={{marginTop:12,padding:"8px 12px",borderRadius:9,border:"none",background:C.purple,color:"white",fontWeight:850,cursor:"pointer",width:"100%"}}>
                 问 AI 学伴怎么执行
               </button>
             </div>
