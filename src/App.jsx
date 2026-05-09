@@ -2876,7 +2876,7 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
   };
 
   return(
-    <div style={{padding:isMobile?12:28,maxWidth:1120,margin:"0 auto",width:"100%"}}>
+    <div style={{padding:isMobile?10:28,maxWidth:1120,margin:"0 auto",width:"100%"}}>
       <div style={{border:`1px solid ${C.geo}24`,borderRadius:18,padding:isMobile?"18px 16px":"24px 28px",
         background:`linear-gradient(135deg,${C.geo}10,${C.alg}08)`,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
@@ -2900,8 +2900,8 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
         </div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"340px minmax(0,1fr)",gap:14}}>
-        <section style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"340px minmax(0,1fr)",gap:isMobile?10:14}}>
+        <section style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:isMobile?14:16}}>
           <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:12}}>学生画像</div>
           <label style={{display:"block",fontSize:13,color:C.muted,marginBottom:10}}>
             年级
@@ -2953,7 +2953,7 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
         </section>
 
         <section style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(4,1fr)",gap:10}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(4,1fr)",gap:10}}>
             {[
               {label:"目标差距",val:`${plan.gap}分`,c:plan.gap>20?C.red:C.gold},
               {label:"掌握进度",val:`${plan.masteredRate}%`,c:C.geo},
@@ -2967,7 +2967,7 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
             ))}
           </div>
 
-          <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+          <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:isMobile?14:16}}>
             <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:12,flexWrap:"wrap"}}>
               <div>
                 <div style={{fontSize:16,fontWeight:900,color:C.text}}>路线图</div>
@@ -2978,7 +2978,7 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
                 去做诊断
               </button>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:10}}>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:isMobile?8:10}}>
               {plan.phases.map((p,i)=>(
                 <div key={p.title} style={{border:`1px solid ${p.color}28`,background:C.s2,borderRadius:12,padding:14}}>
                   <div style={{fontSize:12,color:p.color,fontWeight:900,marginBottom:4}}>阶段 {i+1}</div>
@@ -2990,8 +2990,8 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
             </div>
           </div>
 
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.1fr .9fr",gap:12}}>
-            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1.1fr .9fr",gap:isMobile?10:12}}>
+            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:isMobile?14:16}}>
               <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:10}}>今日任务</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {plan.load.map((task,i)=>(
@@ -3007,7 +3007,7 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
                 <button onClick={()=>onNav("printplan")} style={{padding:"8px 12px",borderRadius:9,border:`1px solid ${C.gold}44`,background:C.gold+"12",color:C.gold,fontWeight:850,cursor:"pointer"}}>训练单</button>
               </div>
             </div>
-            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:isMobile?14:16}}>
               <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:10}}>优先修复</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {plan.focus.map(t=>(
@@ -3025,8 +3025,8 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
             </div>
           </div>
 
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12}}>
-            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:isMobile?10:12}}>
+            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:isMobile?14:16}}>
               <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:10}}>里程碑检查</div>
               {plan.milestones.map(m=>(
                 <div key={m.label} style={{display:"grid",gridTemplateColumns:"58px minmax(0,1fr)",gap:10,marginBottom:10}}>
@@ -3038,7 +3038,7 @@ function PagePlan({onNav,mastered=new Set(),wrongSet=new Set(),basicWrongSet=new
                 </div>
               ))}
             </div>
-            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+            <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:isMobile?14:16}}>
               <div style={{fontSize:16,fontWeight:900,color:C.text,marginBottom:10}}>动态调整</div>
               <div style={{fontSize:14,color:C.text,lineHeight:1.8,marginBottom:12}}>{plan.dynamic}</div>
               <div style={{padding:12,borderRadius:10,background:C.gold+"10",border:`1px solid ${C.gold}30`,fontSize:13,color:C.text,lineHeight:1.8}}>
