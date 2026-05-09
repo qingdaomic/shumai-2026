@@ -3148,6 +3148,55 @@ function PagePrintPlan({onNav, mastered=new Set(), wrongSet=new Set(), basicWron
   );
 }
 
+function PetSkillSuggestionStrip({q, topicName}) {
+  const {isMobile}=useBP();
+  const [skillStatsVersion,setSkillStatsVersion]=useState(0);
+  const actions=useMemo(()=>getPrioritizedPetSkillActions().slice(0,isMobile?2:3),[skillStatsVersion,isMobile]);
+
+  useEffect(()=>{
+    const refresh=()=>setSkillStatsVersion(v=>v+1);
+    window.addEventListener("shumai-skill-local-stats", refresh);
+    window.addEventListener("storage", refresh);
+    return()=>{
+      window.removeEventListener("shumai-skill-local-stats", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  },[]);
+
+  const handlePick=(action)=>{
+    const topicHint=topicName ? `当前知识点：${topicName}。` : "";
+    const questionHint=q?.content ? `当前题目：${q.content}` : "";
+    triggerLearningPetSkillAction({
+      ...action,
+      scene:"question_coach",
+      entry_point:"question_coach_suggestion",
+      petLabel: action.petLabel || "我把这道题带进来了",
+      prompt: `${topicHint}${questionHint}\n${action.prompt}`,
+    });
+  };
+
+  return (
+    <div style={{marginBottom:10,padding:"9px 10px",borderRadius:10,
+      background:C.geo+"0d",border:`1px solid ${C.geo}24`}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:7}}>
+        <div style={{fontSize:12,color:C.geo,fontWeight:950}}>学伴建议</div>
+        <div style={{fontSize:11,color:C.dim}}>按反馈排序</div>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {actions.map((action,index)=>(
+          <button key={action.id} onClick={()=>handlePick(action)}
+            style={{padding:"6px 8px",borderRadius:9,cursor:"pointer",fontSize:12,fontWeight:900,
+              background:index===0?C.geo+"18":action.signal.color+"10",
+              color:index===0?C.geo:action.signal.color,
+              border:`1px solid ${(index===0?C.geo:action.signal.color)}35`}}>
+            {index===0?"优先 · ":""}{action.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CoachWorkbench({q, topicName}) {
   const [confidence,setConfidence]=useState(3);
   const [minutes,setMinutes]=useState(4);
@@ -3203,6 +3252,7 @@ function CoachWorkbench({q, topicName}) {
         <div style={{fontSize:12,color:C.muted,lineHeight:1.7,marginBottom:10}}>
           默认先看提示。只有提示后仍卡住，再打开讲解；错题复盘时用追问模式找病根。
         </div>
+        <PetSkillSuggestionStrip q={q} topicName={topicName}/>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <AskTutor q={q} topicName={topicName} mode="hint" label="提示模式"/>
           <AskTutor q={q} topicName={topicName} mode="explain" label="讲解模式"/>
@@ -11925,6 +11975,18 @@ function getPetSkillActionSignal(action, statsMap={}) {
   return {label:"默认建议", color:C.muted};
 }
 
+function getPrioritizedPetSkillActions() {
+  const statsMap=loadSlashLocalStats();
+  return PET_SKILL_ACTIONS.map((action,index)=>{
+    const signal=getPetSkillActionSignal(action, statsMap);
+    return {
+      ...action,
+      signal,
+      score: scorePetSkillAction(action, statsMap) + (PET_SKILL_ACTIONS.length - index) * 0.01,
+    };
+  }).sort((a,b)=>b.score-a.score);
+}
+
 function loadPetState(defaultOpen=true) {
   try {
     const saved = JSON.parse(localStorage.getItem(PET_STORAGE_KEY) || "{}");
@@ -12084,17 +12146,7 @@ function LearningPet({authToken}) {
   const modeInfo=PET_MODE_COPY[pet.mode] || PET_MODE_COPY.idle;
   const unlockedBadges=PET_GROWTH_BADGES.filter(badge=>level>=badge.minLevel);
   const activeBadge=unlockedBadges[unlockedBadges.length-1] || PET_GROWTH_BADGES[0];
-  const petSkillActions=useMemo(()=>{
-    const statsMap=loadSlashLocalStats();
-    return PET_SKILL_ACTIONS.map((action,index)=>{
-      const signal=getPetSkillActionSignal(action, statsMap);
-      return {
-        ...action,
-        signal,
-        score: scorePetSkillAction(action, statsMap) + (PET_SKILL_ACTIONS.length - index) * 0.01,
-      };
-    }).sort((a,b)=>b.score-a.score);
-  },[skillStatsVersion]);
+  const petSkillActions=useMemo(()=>getPrioritizedPetSkillActions(),[skillStatsVersion]);
 
   useEffect(()=>{
     try {
@@ -12398,8 +12450,8 @@ function AIFloat({context}) {
       const detail=e.detail || {};
       if(!detail.prompt) return;
       const topicHint=context?.topicName ? `当前我在学「${context.topicName}」。` : "";
-      const eventContext={...(context || {}), scene:"pet_companion"};
-      recordPetSkillActionEvent(detail, eventContext, "click");
+      const eventContext={...(context || {}), scene:detail.scene || "pet_companion"};
+      recordPetSkillActionEvent(detail, eventContext, "click", { entry_point:detail.entry_point || "learning_pet_panel" });
       setPetSkillCtx({action:detail, context:eventContext, aiUsed:false});
       setPetFeedback("");
       setOpen(true);
