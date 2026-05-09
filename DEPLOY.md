@@ -87,7 +87,7 @@ sudo -u postgres psql -d shumai -f /opt/shumai-releases/<release>/repo/server/sc
 
 ```bash
 # 创建目录
-mkdir -p /opt/shumai-releases /opt/shumai/dist /var/log/shumai
+mkdir -p /opt/shumai-releases /opt/shumai/dist
 
 # 每次发布创建独立 release 目录
 RELEASE=/opt/shumai-releases/vX.YY-$(date +%Y%m%d-%H%M%S)
@@ -151,8 +151,6 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 3001
     },
-    error_file: '/var/log/shumai/shumai-err.log',
-    out_file: '/var/log/shumai/shumai-out.log',
     log_date_format: 'YYYY-MM-DD HH:mm:ss',
     restart_delay: 3000,
     max_restarts: 10,
@@ -279,7 +277,6 @@ curl -X POST https://your_domain.com/api/auth/register \
 
 # 3. 查看日志
 pm2 logs shumai-api-v4.94 --lines 50
-tail -f /var/log/shumai/shumai-err.log
 ```
 
 ---
@@ -305,7 +302,7 @@ crontab -e
 ### 磁盘使用
 ```bash
 df -h
-du -sh /var/log/shumai /home/ubuntu/shumai-backups
+du -sh /root/.pm2/logs /home/ubuntu/shumai-backups
 # 清理30天前的备份
 find /home/ubuntu/shumai-backups -name "*.gz" -mtime +30 -delete
 ```
@@ -324,4 +321,4 @@ find /home/ubuntu/shumai-backups -name "*.gz" -mtime +30 -delete
 
 ---
 
-> 最后更新：2026-04-29 | 预计部署时间：30-60分钟
+> 最后更新：2026-05-09 | 预计部署时间：30-60分钟
