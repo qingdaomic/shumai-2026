@@ -10083,6 +10083,7 @@ function PageAdmin({onNav}) {
   const [skillFilters,setSkillFilters]=useState({search:"",type:"all",status:"all",scene:"all",subject:"all",source:"all"});
   const [petRewrite,setPetRewrite]=useState(null);
   const [skillOps,setSkillOps]=useState([]);
+  const [skillOpByKey,setSkillOpByKey]=useState({});
   const [skillOpsMeta,setSkillOpsMeta]=useState({stored:false,source:"local"});
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
@@ -10123,6 +10124,7 @@ function PageAdmin({onNav}) {
     at:item.created_at ? new Date(item.created_at).getTime() : Date.now(),
     type:item.action==="skill_weight_adjust"?"降权":item.action==="skill_rewrite"?"改写":"操作",
     skill:item.target_name || item.target_key || "未知 Skill",
+    targetKey:item.target_key,
     detail:item.action==="skill_weight_adjust"
       ? `权重 ${item.before_value?.weight ?? "-"} → ${item.after_value?.weight ?? "-"}`
       : item.action==="skill_rewrite"
@@ -10133,9 +10135,14 @@ function PageAdmin({onNav}) {
 
   const loadOperationLogs=async()=>{
     try{
-      const data=await api("GET","/operation-logs?targetType=prompt_skill&limit=6");
+      const data=await api("GET","/operation-logs?targetType=prompt_skill&limit=50");
       if(data?.stored) {
-        setSkillOps((data.items||[]).map(formatOperationLog));
+        const formatted=(data.items||[]).map(formatOperationLog);
+        setSkillOps(formatted.slice(0,6));
+        setSkillOpByKey(formatted.reduce((acc,op)=>{
+          if(op.targetKey&&!acc[op.targetKey]) acc[op.targetKey]=op;
+          return acc;
+        },{}));
         setSkillOpsMeta({stored:true,source:"remote"});
       } else {
         setSkillOpsMeta({stored:false,source:"local"});
@@ -10146,7 +10153,9 @@ function PageAdmin({onNav}) {
   };
 
   const recordSkillOp=(op, logPayload)=>{
-    setSkillOps(prev=>[{...op,at:Date.now()},...prev].slice(0,6));
+    const localOp={...op,targetKey:logPayload?.targetKey,at:Date.now()};
+    setSkillOps(prev=>[localOp,...prev].slice(0,6));
+    if(localOp.targetKey) setSkillOpByKey(prev=>({...prev,[localOp.targetKey]:localOp}));
     if(logPayload) {
       api("POST","/operation-logs",logPayload)
         .then(data=>{
@@ -10542,7 +10551,7 @@ function PageAdmin({onNav}) {
               </thead>
               <tbody>
                 {skills.map(item=>(
-                  <SkillRow key={item.id} item={item} api={api} onSaved={()=>loadSkills(skillFilters)} />
+                  <SkillRow key={item.id} item={item} latestOp={skillOpByKey[item.skill_key]} api={api} onSaved={()=>loadSkills(skillFilters)} />
                 ))}
                 {skills.length===0&&(
                   <tr>
@@ -11203,7 +11212,7 @@ function SkillOperationTips({ops=[],meta={},onRefresh}) {
   );
 }
 
-function SkillRow({item,api,onSaved}) {
+function SkillRow({item,latestOp,api,onSaved}) {
   const [weight,setWeight]=useState(String(item.weight ?? 0.7));
   const [status,setStatus]=useState(item.status || "active");
   const [saving,setSaving]=useState(false);
@@ -11249,6 +11258,15 @@ function SkillRow({item,api,onSaved}) {
         <div style={{fontSize:12,color:C.muted,marginTop:4,lineHeight:1.5,maxWidth:380,whiteSpace:"normal",overflowWrap:"anywhere"}}>
           {String(item.goal || item.content || "").slice(0,120)}
         </div>
+        {latestOp&&(
+          <div style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:7,padding:"3px 7px",
+            borderRadius:999,background:(latestOp.type==="降权"?C.red:C.sta)+"10",
+            border:`1px solid ${(latestOp.type==="降权"?C.red:C.sta)}26`,
+            color:latestOp.type==="降权"?C.red:C.sta,fontSize:11,fontWeight:850,maxWidth:"100%"}}>
+            <span>{latestOp.stored?"已留痕":"本地记录"}</span>
+            <span style={{color:C.muted,overflowWrap:"anywhere"}}>{latestOp.type} · {latestOp.detail}</span>
+          </div>
+        )}
       </td>
       <td style={{padding:"10px 10px",color:C.muted,whiteSpace:"nowrap"}}>{item.type}</td>
       <td style={{padding:"10px 10px",color:C.muted,whiteSpace:"nowrap"}}>{item.scene}</td>
