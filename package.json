@@ -1,13 +1,14 @@
 {
   "name": "shumai-2026",
   "version": "1.0.0",
-  "description": "数脉 ShuMai · 中考数学智能学习系统",
+  "description": "树脉 ShuMai · 中考数学智能学习系统",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "audit:links": "node scripts/audit-link-chain.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
