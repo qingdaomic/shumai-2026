@@ -11747,6 +11747,161 @@ function VideoExplainButton({questionId, title="视频讲解"}) {
   );
 }
 
+const PET_STORAGE_KEY = "shumai_learning_pet_v1";
+const PET_MODES = {
+  idle: "idle",
+  thinking: "thinking",
+  waiting: "waiting",
+  review: "review",
+  happy: "happy",
+};
+
+const PET_MODE_COPY = {
+  idle: { label: "陪伴中", text: "今天从一个小目标开始。", color: C.alg },
+  thinking: { label: "理思路", text: "我在帮你把卡点拆开。", color: C.purple },
+  waiting: { label: "等你试", text: "这一步你先动笔试试看。", color: C.sta },
+  review: { label: "复盘中", text: "现在适合回看刚才那一步。", color: C.geo },
+  happy: { label: "变强了", text: "这个小漏洞修好了。", color: C.ok },
+};
+
+function loadPetState(defaultOpen=true) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PET_STORAGE_KEY) || "{}");
+    return {
+      name: saved.name || "树脉学伴",
+      species: saved.species || "cat",
+      mode: saved.mode || PET_MODES.idle,
+      xp: Number(saved.xp || 0),
+      open: typeof saved.open === "boolean" ? saved.open : defaultOpen,
+      lastSeen: saved.lastSeen || "",
+    };
+  } catch {
+    return { name: "树脉学伴", species: "cat", mode: PET_MODES.idle, xp: 0, open: defaultOpen, lastSeen: "" };
+  }
+}
+
+function petLevel(xp) {
+  return Math.max(1, Math.floor(Number(xp || 0) / 80) + 1);
+}
+
+function petStage(level) {
+  if (level <= 2) return "幼年期";
+  if (level <= 5) return "成长期";
+  if (level <= 9) return "进阶期";
+  return "自信期";
+}
+
+function PetSprite({species,mode,level}) {
+  const isDog = species === "dog";
+  const color = isDog ? "#d8a767" : "#8fb7d9";
+  const earColor = isDog ? "#b98247" : "#6f9ec4";
+  const mood = mode === PET_MODES.happy ? "◠" : mode === PET_MODES.thinking ? "·" : "•";
+  const scale = 1 + Math.min(level, 10) * 0.015;
+  return (
+    <div style={{width:58,height:58,position:"relative",transform:`scale(${scale})`,transformOrigin:"center bottom"}}>
+      <div style={{position:"absolute",left:8,top:4,width:14,height:22,borderRadius:"12px 12px 6px 6px",
+        background:earColor,transform:isDog?"rotate(-22deg)":"rotate(-36deg)"}}/>
+      <div style={{position:"absolute",right:8,top:4,width:14,height:22,borderRadius:"12px 12px 6px 6px",
+        background:earColor,transform:isDog?"rotate(22deg)":"rotate(36deg)"}}/>
+      <div style={{position:"absolute",left:7,top:14,width:44,height:38,borderRadius:"22px 22px 18px 18px",
+        background:color,border:"1px solid rgba(255,255,255,.45)",boxShadow:"0 10px 24px rgba(0,0,0,.18)"}}>
+        <div style={{position:"absolute",left:12,top:13,width:5,height:5,borderRadius:3,background:"#182434"}}/>
+        <div style={{position:"absolute",right:12,top:13,width:5,height:5,borderRadius:3,background:"#182434"}}/>
+        <div style={{position:"absolute",left:19,top:20,fontSize:12,fontWeight:900,color:"#182434",lineHeight:1}}>
+          {mood}
+        </div>
+        {mode===PET_MODES.thinking&&(
+          <div style={{position:"absolute",right:-9,top:-10,width:16,height:16,borderRadius:8,
+            border:`2px solid ${C.purple}`,borderTopColor:"transparent"}}/>
+        )}
+        {mode===PET_MODES.happy&&(
+          <div style={{position:"absolute",right:-5,top:3,color:C.ok,fontSize:14,fontWeight:900}}>✦</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LearningPet() {
+  const {isMobile}=useBP();
+  const [pet,setPet]=useState(()=>loadPetState(!isMobile));
+  const level=petLevel(pet.xp);
+  const nextXp=level*80;
+  const currentBase=(level-1)*80;
+  const pct=Math.min(100,Math.round((pet.xp-currentBase)/(nextXp-currentBase)*100));
+  const modeInfo=PET_MODE_COPY[pet.mode] || PET_MODE_COPY.idle;
+
+  useEffect(()=>{
+    try {
+      localStorage.setItem(PET_STORAGE_KEY, JSON.stringify({...pet,lastSeen:new Date().toISOString()}));
+    } catch {}
+  },[pet]);
+
+  const setMode=(mode)=>setPet(prev=>({...prev,mode}));
+  const switchSpecies=()=>setPet(prev=>({...prev,species:prev.species==="cat"?"dog":"cat"}));
+
+  if(!pet.open) {
+    return (
+      <button onClick={()=>setPet(prev=>({...prev,open:true}))}
+        title="我的学伴"
+        style={{position:"fixed",right:isMobile?14:30,bottom:isMobile?132:100,zIndex:9000,
+          width:48,height:48,borderRadius:24,border:`1px solid ${C.border}`,background:C.s1,
+          color:C.text,cursor:"pointer",boxShadow:"0 12px 30px rgba(0,0,0,.22)",
+          display:"grid",placeItems:"center",fontSize:22}}>
+        {pet.species==="cat"?"◕":"◔"}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{position:"fixed",right:isMobile?12:30,bottom:isMobile?126:96,zIndex:9000,
+      width:isMobile?236:252,maxWidth:"calc(100vw - 24px)",borderRadius:14,
+      background:C.s1,border:`1px solid ${C.border}`,boxShadow:"0 16px 44px rgba(0,0,0,.28)",
+      overflow:"hidden"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.s2,borderBottom:`1px solid ${C.border}`}}>
+        <PetSprite species={pet.species} mode={pet.mode} level={level}/>
+        <div style={{minWidth:0,flex:1}}>
+          <div style={{fontSize:14,fontWeight:950,color:C.text}}>我的学伴</div>
+          <div style={{fontSize:12,color:modeInfo.color,fontWeight:850,marginTop:2}}>{modeInfo.label}</div>
+        </div>
+        <button onClick={()=>setPet(prev=>({...prev,open:false}))}
+          title="收起"
+          style={{width:28,height:28,borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,cursor:"pointer",fontSize:16}}>
+          ×
+        </button>
+      </div>
+      <div style={{padding:12}}>
+        <div style={{fontSize:13,color:C.text,lineHeight:1.6,fontWeight:750,marginBottom:10}}>
+          {modeInfo.text}
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:6}}>
+          <span style={{fontSize:12,color:C.muted}}>Lv.{level} · {petStage(level)}</span>
+          <span style={{fontSize:12,color:C.dim}}>{pet.xp}/{nextXp} XP</span>
+        </div>
+        <Bar v={pct} color={modeInfo.color} h={5}/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5,marginTop:12}}>
+          {Object.values(PET_MODES).map(mode=>(
+            <button key={mode} onClick={()=>setMode(mode)}
+              title={PET_MODE_COPY[mode].label}
+              style={{height:28,borderRadius:8,border:`1px solid ${pet.mode===mode?PET_MODE_COPY[mode].color:C.border}`,
+                background:pet.mode===mode?PET_MODE_COPY[mode].color+"18":C.s2,
+                color:pet.mode===mode?PET_MODE_COPY[mode].color:C.muted,cursor:"pointer",fontSize:12,fontWeight:900}}>
+              {mode==="idle"?"静":mode==="thinking"?"想":mode==="waiting"?"等":mode==="review"?"复":"好"}
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
+          <button onClick={switchSpecies}
+            style={{padding:"5px 9px",borderRadius:8,border:`1px solid ${C.border}`,background:"transparent",color:C.muted,cursor:"pointer",fontSize:12,fontWeight:800}}>
+            换成{pet.species==="cat"?"小狗":"小猫"}
+          </button>
+          <span style={{fontSize:11,color:C.dim}}>本地保存</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════
    🤖 全局 AI 浮窗 — 页面右下角常驻 "问学长" 气泡
 ════════════════════════════════════════════════════════════ */
@@ -12698,6 +12853,7 @@ export default function App() {
           {view==="admin"&&<ErrorBoundary label="后台管理"><PageAdmin onNav={navigate}/></ErrorBoundary>}
           {view==="morning"&&<PageMorning mastered={mastered} wrongSet={wrongSet} basicWrongSet={basicWrongSet}/>}
         </main>
+        <LearningPet/>
         <AIFloat context={detailId ? {topicName: TOPIC_MAP[detailId]?.name} : null}/>
       </div>
       {/* 手机端底部 Tab 栏 */}
