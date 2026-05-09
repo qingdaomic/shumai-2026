@@ -10159,10 +10159,11 @@ function PageAdmin({onNav}) {
         weight:petRewrite.item.weight,
         status:petRewrite.item.status || "active",
       });
+      const beforeText=String(petRewrite.originalContent || petRewrite.item.content || "").trim();
       recordSkillOp({
         type:"改写",
         skill:petRewrite.item.name || petRewrite.item.skill_key,
-        detail:"已保存人工改写内容",
+        detail:`内容 ${beforeText.length} 字 → ${content.length} 字`,
       });
       setMsg("✅ 已保存 Skill 改写内容");
       setPetRewrite(null);
@@ -10459,7 +10460,7 @@ function PageAdmin({onNav}) {
               source:"learning_pet",
             }))}
             onAdjust={adjustPetSkillWeight}
-            onRewrite={(item)=>setPetRewrite({item,content:item.content || ""})}
+            onRewrite={(item)=>setPetRewrite({item,content:item.content || "",originalContent:item.content || ""})}
           />
 
           <SkillOperationTips ops={skillOps}/>
@@ -11053,6 +11054,9 @@ function PetSkillWatchlist({items=[],onFocus,onAdjust,onRewrite}) {
 
 function PetSkillRewritePanel({draft,onChange,onCancel,onSave}) {
   if(!draft?.item) return null;
+  const original=String(draft.originalContent || draft.item.content || "");
+  const current=String(draft.content || "");
+  const hasChanged=original.trim()!==current.trim();
   return (
     <div style={{padding:12,borderRadius:12,background:C.sta+"0d",border:`1px solid ${C.sta}28`,marginBottom:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
@@ -11067,6 +11071,20 @@ function PetSkillRewritePanel({draft,onChange,onCancel,onSave}) {
             background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
           取消
         </button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8,marginBottom:8}}>
+        <div style={{padding:10,borderRadius:10,background:C.s1,border:`1px solid ${C.border}`}}>
+          <div style={{fontSize:11,color:C.muted,fontWeight:900,marginBottom:6}}>原内容 · {original.trim().length} 字</div>
+          <div style={{fontSize:12,color:C.dim,lineHeight:1.6,whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:120,overflowY:"auto"}}>
+            {original || "暂无原内容"}
+          </div>
+        </div>
+        <div style={{padding:10,borderRadius:10,background:hasChanged?C.sta+"10":C.s1,border:`1px solid ${hasChanged?C.sta+"35":C.border}`}}>
+          <div style={{fontSize:11,color:hasChanged?C.sta:C.muted,fontWeight:900,marginBottom:6}}>改写后 · {current.trim().length} 字</div>
+          <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>
+            {hasChanged?"已检测到改写，请确认仍保留学生可执行的下一步。":"还没有改动。"}
+          </div>
+        </div>
       </div>
       <textarea value={draft.content || ""} onChange={e=>onChange?.(e.target.value)}
         style={{width:"100%",minHeight:120,boxSizing:"border-box",padding:10,borderRadius:10,
