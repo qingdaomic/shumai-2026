@@ -11937,10 +11937,10 @@ function triggerLearningPetSkillAction(action) {
   }));
 }
 
-async function recordPetSkillActionEvent(action, context={}) {
+async function recordPetSkillActionEvent(action, context={}, eventType="click", extra={}) {
   if(!action?.skill_key) return;
   const token=window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
-  bumpSlashLocalStat(action.skill_key, "click");
+  bumpSlashLocalStat(action.skill_key, eventType);
   try {
     await fetch(`${BACKEND_URL}/api/skills/event`, {
       method:"POST",
@@ -11949,7 +11949,7 @@ async function recordPetSkillActionEvent(action, context={}) {
         ...(token?{"Authorization":`Bearer ${token}`}:{})
       },
       body:JSON.stringify({
-        event_type:"click",
+        event_type:eventType,
         skill_key:action.skill_key,
         question_id:context.question_id || "",
         question_type:context.question_type || "all",
@@ -11962,6 +11962,7 @@ async function recordPetSkillActionEvent(action, context={}) {
           label:action.label,
           prompt:action.prompt,
           topic_name:context.topicName || "",
+          ...extra,
         },
       }),
     });
@@ -12303,6 +12304,8 @@ function AIFloat({context}) {
   const [loading,setLoading]=useState(false);
   const [micOn,setMicOn]=useState(false);
   const [voiceErr,setVoiceErr]=useState("");
+  const [petSkillCtx,setPetSkillCtx]=useState(null);
+  const [petFeedback,setPetFeedback]=useState("");
   const scrollRef=useRef(null);
   const recRef=useRef(null);
   const {isMobile}=useBP();
@@ -12329,7 +12332,10 @@ function AIFloat({context}) {
       const detail=e.detail || {};
       if(!detail.prompt) return;
       const topicHint=context?.topicName ? `当前我在学「${context.topicName}」。` : "";
-      recordPetSkillActionEvent(detail, {...(context || {}), scene:"pet_companion"});
+      const eventContext={...(context || {}), scene:"pet_companion"};
+      recordPetSkillActionEvent(detail, eventContext, "click");
+      setPetSkillCtx({action:detail, context:eventContext, aiUsed:false});
+      setPetFeedback("");
       setOpen(true);
       setInput(`${topicHint}${detail.prompt}`);
     };
@@ -12356,12 +12362,22 @@ function AIFloat({context}) {
       const hist = msgs.slice(-10);
       const result = await callAI(system, userMsg, hist);
       setMsgs(prev=>[...prev,{r:"ai",t:result}]);
+      if(petSkillCtx?.action && !petSkillCtx.aiUsed) {
+        recordPetSkillActionEvent(petSkillCtx.action, petSkillCtx.context, "ai_used", { entry_point:"ai_float" });
+        setPetSkillCtx(prev=>prev?{...prev,aiUsed:true}:prev);
+      }
       setLearningPetMode(PET_MODES.review, "回答好了，可以挑一句复盘");
     } catch(e) {
       setMsgs(prev=>[...prev,{r:"ai",t:"⚠️ 网络异常，请稍后重试"}]);
       setLearningPetMode(PET_MODES.idle, "网络没接上，先别急");
     }
     setLoading(false);
+  };
+
+  const sendPetFeedback=(type)=>{
+    if(!petSkillCtx?.action || petFeedback) return;
+    setPetFeedback(type);
+    recordPetSkillActionEvent(petSkillCtx.action, petSkillCtx.context, type, { entry_point:"ai_float_feedback" });
   };
 
   if(!open) return (
@@ -12430,6 +12446,27 @@ function AIFloat({context}) {
               background:"#1a2d44",color:C.muted,fontSize:14}}>
               💭 思考中...
             </div>
+          </div>
+        )}
+        {petSkillCtx?.action && !loading && msgs.some(m=>m.r==="ai")&&(
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",paddingLeft:2}}>
+            {!petFeedback?(
+              <>
+                <span style={{fontSize:12,color:C.muted}}>这次学伴建议有帮助吗？</span>
+                <button onClick={()=>sendPetFeedback("helpful")}
+                  style={{padding:"5px 8px",borderRadius:8,border:`1px solid ${C.geo}35`,background:C.geo+"10",color:C.geo,fontSize:12,fontWeight:850,cursor:"pointer"}}>
+                  有帮助
+                </button>
+                <button onClick={()=>sendPetFeedback("not_helpful")}
+                  style={{padding:"5px 8px",borderRadius:8,border:`1px solid ${C.red}35`,background:C.red+"10",color:C.red,fontSize:12,fontWeight:850,cursor:"pointer"}}>
+                  没帮助
+                </button>
+              </>
+            ):(
+              <span style={{fontSize:12,color:petFeedback==="helpful"?C.geo:C.red,fontWeight:850}}>
+                已记录为 {petFeedback==="helpful"?"有帮助":"没帮助"}。
+              </span>
+            )}
           </div>
         )}
       </div>
