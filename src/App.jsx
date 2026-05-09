@@ -412,7 +412,7 @@ function normalizeTutorQuestion(q={}) {
 function buildTutorSystem(q, topicName, mode="explain") {
   const nq=normalizeTutorQuestion(q);
   const methodNames=(nq.methods||[]).map(mid=>METHODS.find(m=>m.id===mid)?.name).filter(Boolean).join("、")||"未标注";
-  const base=`你是树脉学长，一位很会带初中生开窍的数学学长。回答要像真人辅导：先抓题眼，再拆思路，再提醒易错，不要像标准答案复读。
+  const base=`你是树博士，一位很会带初中生开窍的数学教练。回答要像真人辅导：先抓题眼，再拆思路，再提醒易错，不要像标准答案复读。
 
 ## 题目上下文
 - 知识点：${topicName||"本题"}
@@ -428,7 +428,7 @@ function buildTutorSystem(q, topicName, mode="explain") {
     ? "学生在看错题。请先判断错因，再讲清正确入口，最后给防错提醒。"
     : mode==="topic"
     ? "学生在学知识点。请围绕概念、公式、考法、易错点总结。"
-    : "学生点了问学长。请讲这道题为什么这样想，而不只是怎么算。";
+    : "学生点了树博士。请讲这道题为什么这样想，而不只是怎么算。";
   return `${base}
 
 ## 回答要求
@@ -851,7 +851,7 @@ function buildSearchRepairSuggestion(entry) {
   if(entry.type==="ai") {
     return {
       label:"可直接问 AI",
-      summary:"这条结果本身就是提问词，适合在题目教练场里直接发给树脉学长。",
+      summary:"这条结果本身就是提问词，适合在题目教练场里直接发给树博士。",
       steps:[
         "先选一题：最好在当前卡住的题目里使用。",
         "再追问：如果提示仍不够，只追问题眼或第一步，不急着要完整答案。",
@@ -895,7 +895,7 @@ function searchShuMaiIndex(query, limitPerGroup=4) {
     if(entry.group==="exam" && /真题|中考|20\d{2}|第/.test(query)) score+=28;
     if(entry.group==="method" && /法|方法|思想|题眼/.test(query)) score+=22;
     if(entry.type==="wrong" && /错|错因|不会|卡|漏/.test(query)) score+=22;
-    if(entry.group==="ai" && /问|提示|AI|ai|学长|卡/.test(query)) score+=18;
+    if(entry.group==="ai" && /问|提示|AI|ai|树博士|卡/.test(query)) score+=18;
     return {...entry, score};
   }).filter(entry=>entry.score>0)
     .sort((a,b)=>b.score-a.score || a.title.length-b.title.length);
@@ -1063,7 +1063,7 @@ function ShuMaiSearchResults({query, results, onPick, compact=false, skillPrompt
                   summary:"这是一条由当前搜索和本地 Skill 权重共同决定的追问词。",
                   steps:[
                     "先在当前搜索结果里确认自己最像卡在什么位置。",
-                    "再把这个提问词带到题目教练场或 AI 学长里。",
+                    "再把这个提问词带到题目教练场或树博士里。",
                     "如果回答有帮助，后续推荐会继续往这个方向靠。",
                   ],
                   practice:[
@@ -1460,7 +1460,7 @@ async function askTutorSkillAI({q, item, mode, history, viewport}) {
   });
   const data=await res.json().catch(()=>({}));
   if(!res.ok) throw new Error(data.error || "skill failed");
-  return data.answer || data.text || "学长这一步没接上，你可以再点一次。";
+  return data.answer || data.text || "树博士这一步没接上，你可以再点一次。";
 }
 
 // 兼容旧调用
@@ -5939,7 +5939,7 @@ function PagePractice({wrongSet,addWrong,removeWrong,filters,setFilters,highligh
             还有 {filtered.length-3} 道题等你解锁
           </div>
           <div style={{fontSize:14,color:C.muted,marginBottom:16}}>
-            注册免费账号，解锁全部 {filtered.length} 道真题 + 错题本 + AI 学长
+            注册免费账号，解锁全部 {filtered.length} 道真题 + 错题本 + 树博士
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
             <button onClick={()=>window.dispatchEvent(new CustomEvent("shumai-nav",{detail:{v:"vip"}}))}
@@ -6914,7 +6914,7 @@ function WechatCoachPanel({authUser, authToken, onOpenAuth, compact=false}){
   const token = authToken || window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
   const phone = authUser?.phone || "";
   const bindCommand = phone ? `绑定 ${phone}` : "绑定 你的手机号";
-  const botWechatId = wechatStatus?.botWechatId || "树脉学长";
+  const botWechatId = (wechatStatus?.botWechatId || "树博士").replace(/树脉\u5b66\u957f/g,"树博士");
   const botQrCodeUrl = wechatStatus?.botQrCodeUrl || "";
 
   useEffect(()=>{
@@ -6979,12 +6979,12 @@ function WechatCoachPanel({authUser, authToken, onOpenAuth, compact=false}){
         <div style={{display:"grid",gridTemplateColumns:botQrCodeUrl?(isMobile?"1fr":"92px 1fr"):"1fr",gap:12,alignItems:"stretch",minWidth:0}}>
           {botQrCodeUrl&&(
             <div style={{width:92,height:92,borderRadius:10,background:"#fff",padding:6,boxSizing:"border-box"}}>
-              <img src={botQrCodeUrl} alt="树脉学长微信二维码" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}}/>
+              <img src={botQrCodeUrl} alt="树博士微信二维码" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:6}}/>
             </div>
           )}
           <div style={{display:"flex",flexDirection:"column",gap:8,minWidth:0}}>
             {[
-              {n:"1",t:"扫码添加树脉学长微信"},
+              {n:"1",t:"扫码添加树博士微信"},
               {n:"2",t:`发送：${bindCommand}`},
               {n:"3",t:"微信内对话、收计划、发题分析"},
             ].map(step=>(
@@ -12131,7 +12131,7 @@ function AuthModal({onClose, onLogin, initialTab="login"}) {
     setErr("");
     setNotice("");
     if(mode==="sms"){
-      setNotice("短信验证码登录正在接入中。现在可先用账号密码登录，或注册后绑定微信里的树脉学长。");
+      setNotice("短信验证码登录正在接入中。现在可先用账号密码登录，或注册后绑定微信里的树博士。");
       return;
     }
     if(mode==="register"){
@@ -12261,7 +12261,7 @@ function AuthModal({onClose, onLogin, initialTab="login"}) {
               </div>
               <div style={{fontSize:17,fontWeight:900,color:authTheme.ink,marginBottom:8}}>使用微信扫码登录</div>
               <div style={{fontSize:14,color:authTheme.muted,lineHeight:1.8,marginBottom:12,overflowWrap:"anywhere"}}>
-                网页微信扫码登录正在接入。当前可在微信中添加“树脉学长”，发送“绑定 手机号”，让 AI 教练把计划、提醒和错题修复送到微信里。
+                网页微信扫码登录正在接入。当前可在微信中添加“树博士”，发送“绑定 手机号”，让 AI 教练把计划、提醒和错题修复送到微信里。
               </div>
               <div style={{padding:"12px 14px",borderRadius:12,background:"#ecfdf3",
                 color:"#027a48",fontSize:13,lineHeight:1.7,textAlign:"left",border:"1px solid #abefc6",overflowWrap:"anywhere"}}>
@@ -12375,7 +12375,7 @@ function AuthModal({onClose, onLogin, initialTab="login"}) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   🤖 AI 讲解卡片组件 — "问学长"按钮点击后展开
+   🤖 AI 讲解卡片组件 — "树博士"按钮点击后展开
 ════════════════════════════════════════════════════════════ */
 function SlashPromptMenu({open, items, loading, onSelect}) {
   const {isMobile}=useBP();
@@ -12434,7 +12434,7 @@ function SlashPromptMenu({open, items, loading, onSelect}) {
   );
 }
 
-function AskTutor({q, topicName, mode="explain", label="问学长"}) {
+function AskTutor({q, topicName, mode="explain", label="树博士"}) {
   const [open,setOpen]=useState(false);
   const [text,setText]=useState("");
   const [loading,setLoading]=useState(false);
@@ -12525,7 +12525,7 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
       setLearningPetMode(PET_MODES.review, "回答好了，适合复盘一下");
     } catch(e) {
       setText("⚠️ AI暂时不在线，请稍后重试");
-      setLearningPetMode(PET_MODES.idle, "学长暂时没接上，先稳住");
+      setLearningPetMode(PET_MODES.idle, "树博士暂时没接上，先稳住");
     }
     setLoading(false);
   };
@@ -12583,7 +12583,7 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
       setHistory(prev=>[...prev,{r:"ai",t:result}]);
       setLearningPetMode(PET_MODES.review, "这一步可以回看复盘");
     } catch(e) {
-      setText("学长这一步没接上，你可以再点一次。");
+      setText("树博士这一步没接上，你可以再点一次。");
       setLearningPetMode(PET_MODES.idle, "这次没接上，换个问法也可以");
     }
     setLoading(false);
@@ -12606,7 +12606,7 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
           background:"#a78bfa0d",borderRadius:10,
           border:"1px solid #a78bfa25"}}>
           {loading&&!text?(
-            <div style={{color:C.muted,fontSize:14}}>💭 学长正在思考...</div>
+            <div style={{color:C.muted,fontSize:14}}>💭 树博士正在思考...</div>
           ):text?(
             <>
               <div style={{fontSize:15,color:C.text,lineHeight:1.8,whiteSpace:"pre-wrap",marginBottom:10}}>{text}</div>
@@ -12627,13 +12627,13 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
                   已记录为 {feedback==="helpful"?"有帮助":"没帮助"}，系统会据此调整后续推荐。
                 </div>
               )}
-              {loading&&<div style={{fontSize:13,color:"#a78bfa",marginBottom:8}}>💭 学长正在回答...</div>}
+              {loading&&<div style={{fontSize:13,color:"#a78bfa",marginBottom:8}}>💭 树博士正在回答...</div>}
               {/* 追问输入行 */}
               <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:isMobile?"wrap":"nowrap"}}>
                 <div ref={slashBoxRef} style={{position:"relative",flex:isMobile?"1 1 100%":1,minWidth:0}}>
                   <input value={followUp} onChange={e=>handleFollowUpChange(e.target.value)}
                     onKeyDown={handleFollowUpKeyDown}
-                    placeholder={micOn?"正在听，说完自动填入...":"继续追问学长，输入 / 试试"}
+                    placeholder={micOn?"正在听，说完自动填入...":"继续追问树博士，输入 / 试试"}
                     style={{width:"100%",boxSizing:"border-box",padding:"8px 14px",borderRadius:20,
                       background:micOn?"#ef44440d":C.s1,
                       border:`1px solid ${micOn?"#ef4444":slashOpen?C.geo:C.border}`,
@@ -13103,7 +13103,7 @@ function LearningPet({authToken}) {
   if(!pet.open) {
     return (
       <button onClick={()=>setPet(prev=>({...prev,open:true}))}
-        title="我的学伴"
+        title="我的伙伴"
         style={{position:"fixed",right:isMobile?14:30,bottom:isMobile?132:100,zIndex:9000,
           width:48,height:48,borderRadius:24,border:`1px solid ${C.border}`,background:C.s1,
           color:C.text,cursor:"pointer",boxShadow:"0 12px 30px rgba(0,0,0,.22)",
@@ -13121,7 +13121,7 @@ function LearningPet({authToken}) {
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.s2,borderBottom:`1px solid ${C.border}`}}>
         <PetSprite species={pet.species} mode={pet.mode} level={level}/>
         <div style={{minWidth:0,flex:1}}>
-          <div style={{fontSize:14,fontWeight:950,color:C.text}}>我的学伴</div>
+          <div style={{fontSize:14,fontWeight:950,color:C.text}}>我的伙伴</div>
           <div style={{fontSize:12,color:modeInfo.color,fontWeight:850,marginTop:2}}>{modeInfo.label}</div>
         </div>
         <button onClick={()=>setPet(prev=>({...prev,open:false}))}
@@ -13244,7 +13244,7 @@ function LearningPet({authToken}) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   🤖 全局 AI 浮窗 — 页面右下角常驻 "问学长" 气泡
+   🤖 全局 AI 浮窗 — 页面右下角常驻 "树博士" 气泡
 ════════════════════════════════════════════════════════════ */
 function AIFloat({context}) {
   const [open,setOpen]=useState(false);
@@ -13305,7 +13305,7 @@ function AIFloat({context}) {
         : context?.questionContent
         ? `学生当前正在看这道题：${context.questionContent}`
         : "";
-      const system = `你是树脉学长，正在通过H5页面和学生聊天。${ctxHint}
+      const system = `你是树博士，正在通过H5页面和学生聊天。${ctxHint}
 回答中考数学相关问题，用①②③分步讲解，150字以内，口语化，不用LaTeX和Markdown。
 如果学生问非数学问题，简短回应后温柔引导回数学。`;
       const hist = msgs.slice(-10);
@@ -13358,9 +13358,9 @@ function AIFloat({context}) {
         alignItems:"center",background:C.s2,borderBottom:`1px solid ${C.border}`}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:20}}>🤖</span>
-          <span style={{fontWeight:800,fontSize:16,color:C.text}}>树脉学长</span>
+          <span style={{fontWeight:800,fontSize:16,color:C.text}}>树博士</span>
           <span style={{fontSize:11,color:"#a78bfa",padding:"2px 8px",
-            background:"#a78bfa1a",borderRadius:10}}>AI学伴</span>
+            background:"#a78bfa1a",borderRadius:10}}>AI伙伴</span>
         </div>
         <button onClick={()=>setOpen(false)}
           style={{background:"none",border:"none",color:C.muted,
@@ -13447,7 +13447,7 @@ function AIFloat({context}) {
           </button>
           <input value={input} onChange={e=>setInput(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&send()}
-            placeholder={micOn?"🎤 正在听…":"问学长数学问题…或点🎤语音提问"}
+            placeholder={micOn?"🎤 正在听…":"问树博士数学问题…或点🎤语音提问"}
             style={{flex:1,padding:"10px 16px",borderRadius:22,
               background:micOn?"#ef44440d":C.bg,
               border:`1px solid ${micOn?"#ef4444":C.border}`,
