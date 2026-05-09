@@ -10084,6 +10084,7 @@ function PageAdmin({onNav}) {
   const [petRewrite,setPetRewrite]=useState(null);
   const [skillOps,setSkillOps]=useState([]);
   const [skillOpByKey,setSkillOpByKey]=useState({});
+  const [skillHistory,setSkillHistory]=useState(null);
   const [skillOpsMeta,setSkillOpsMeta]=useState({stored:false,source:"local"});
   const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
@@ -10167,6 +10168,23 @@ function PageAdmin({onNav}) {
           }
         })
         .catch(()=>setSkillOpsMeta({stored:false,source:"local"}));
+    }
+  };
+
+  const openSkillHistory=async(item)=>{
+    if(!item?.skill_key) return;
+    const localItems=skillOps.filter(op=>op.targetKey===item.skill_key);
+    setSkillHistory({skill:item,items:localItems,stored:false,loading:true});
+    try{
+      const qs=new URLSearchParams({targetType:"prompt_skill",targetKey:item.skill_key,limit:"20"});
+      const data=await api("GET",`/operation-logs?${qs.toString()}`);
+      if(data?.stored) {
+        setSkillHistory({skill:item,items:(data.items||[]).map(formatOperationLog),stored:true,loading:false});
+      } else {
+        setSkillHistory({skill:item,items:localItems,stored:false,loading:false});
+      }
+    }catch(e){
+      setSkillHistory({skill:item,items:localItems,stored:false,loading:false});
     }
   };
 
@@ -10533,6 +10551,12 @@ function PageAdmin({onNav}) {
 
           <SkillOperationTips ops={skillOps} meta={skillOpsMeta} onRefresh={loadOperationLogs}/>
 
+          <SkillOperationHistoryPanel
+            history={skillHistory}
+            onClose={()=>setSkillHistory(null)}
+            onRefresh={()=>skillHistory?.skill&&openSkillHistory(skillHistory.skill)}
+          />
+
           <PetSkillRewritePanel
             draft={petRewrite}
             onChange={content=>setPetRewrite(prev=>prev?{...prev,content}:prev)}
@@ -10551,7 +10575,8 @@ function PageAdmin({onNav}) {
               </thead>
               <tbody>
                 {skills.map(item=>(
-                  <SkillRow key={item.id} item={item} latestOp={skillOpByKey[item.skill_key]} api={api} onSaved={()=>loadSkills(skillFilters)} />
+                  <SkillRow key={item.id} item={item} latestOp={skillOpByKey[item.skill_key]} api={api}
+                    onHistory={()=>openSkillHistory(item)} onSaved={()=>loadSkills(skillFilters)} />
                 ))}
                 {skills.length===0&&(
                   <tr>
@@ -11212,7 +11237,56 @@ function SkillOperationTips({ops=[],meta={},onRefresh}) {
   );
 }
 
-function SkillRow({item,latestOp,api,onSaved}) {
+function SkillOperationHistoryPanel({history,onClose,onRefresh}) {
+  if(!history?.skill) return null;
+  return (
+    <div style={{padding:12,borderRadius:12,background:C.purple+"0d",border:`1px solid ${C.purple}24`,marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
+        <div>
+          <div style={{fontSize:14,color:C.purple,fontWeight:950}}>Skill 操作历史</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:3,overflowWrap:"anywhere"}}>
+            {history.skill.name} · {history.skill.skill_key}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <span style={{fontSize:12,color:history.stored?C.ok:C.sta,fontWeight:900}}>
+            {history.loading?"读取中":history.stored?"持久化":"本地降级"}
+          </span>
+          <button onClick={onRefresh}
+            style={{padding:"4px 8px",borderRadius:8,cursor:"pointer",fontSize:12,
+              background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
+            刷新
+          </button>
+          <button onClick={onClose}
+            style={{padding:"4px 8px",borderRadius:8,cursor:"pointer",fontSize:12,
+              background:C.s2,color:C.muted,border:`1px solid ${C.border}`}}>
+            收起
+          </button>
+        </div>
+      </div>
+      {history.items?.length?(
+        <div style={{display:"grid",gap:6}}>
+          {history.items.map(op=>(
+            <div key={`${op.at}-${op.type}-${op.detail}`} style={{display:"grid",gridTemplateColumns:"64px 1fr auto",gap:8,
+              alignItems:"center",padding:"7px 8px",borderRadius:9,background:C.s1,border:`1px solid ${C.border}`}}>
+              <span style={{fontSize:12,color:op.type==="降权"?C.red:C.sta,fontWeight:950}}>{op.type}</span>
+              <span style={{fontSize:12,color:C.text,overflowWrap:"anywhere"}}>{op.detail}</span>
+              <span style={{fontSize:11,color:C.dim,whiteSpace:"nowrap"}}>
+                {new Date(op.at).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
+              </span>
+            </div>
+          ))}
+        </div>
+      ):(
+        <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>
+          暂无这个 Skill 的人工操作记录。数据库迁移和后端部署完成后，这里会显示持久化历史。
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SkillRow({item,latestOp,api,onHistory,onSaved}) {
   const [weight,setWeight]=useState(String(item.weight ?? 0.7));
   const [status,setStatus]=useState(item.status || "active");
   const [saving,setSaving]=useState(false);
@@ -11313,11 +11387,18 @@ function SkillRow({item,latestOp,api,onSaved}) {
         {item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN") : "—"}
       </td>
       <td style={{padding:"10px 10px",whiteSpace:"nowrap"}}>
-        <button onClick={save} disabled={saving}
-          style={{padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:800,
-            background:C.ok+"18",color:C.ok,border:`1px solid ${C.ok}33`,opacity:saving?0.6:1}}>
-          {saving?"保存中":"保存"}
-        </button>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <button onClick={save} disabled={saving}
+            style={{padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:800,
+              background:C.ok+"18",color:C.ok,border:`1px solid ${C.ok}33`,opacity:saving?0.6:1}}>
+            {saving?"保存中":"保存"}
+          </button>
+          <button onClick={onHistory}
+            style={{padding:"6px 10px",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:800,
+              background:C.purple+"14",color:C.purple,border:`1px solid ${C.purple}30`}}>
+            历史
+          </button>
+        </div>
       </td>
     </tr>
   );
