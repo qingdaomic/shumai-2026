@@ -540,6 +540,7 @@ const SEARCH_GROUP_LABELS = {
   topic:"知识点",
   question:"题目",
   method:"方法",
+  wrong:"错因",
   exam:"真题",
   ai:"AI 问法",
 };
@@ -549,6 +550,7 @@ const SEARCH_GROUP_COLORS = {
   topic:C.alg,
   question:C.geo,
   method:C.purple,
+  wrong:C.red,
   exam:C.gold,
   ai:C.cyan,
 };
@@ -637,7 +639,7 @@ function buildShuMaiSearchIndex() {
   SHUMAI_SEARCH_WRONG_CAUSES.forEach(w=>{
     entries.push({
       id:`wrong-${w.id}`,
-      group:"question",
+      group:"wrong",
       type:"wrong",
       title:w.name,
       eyebrow:"错因",
@@ -667,9 +669,164 @@ function buildShuMaiSearchIndex() {
 
 const SHUMAI_SEARCH_INDEX = buildShuMaiSearchIndex();
 
+function getTopicBasicsForSearch(topicId, count=2) {
+  return (BASICS_BY_TOPIC[topicId] || []).slice(0, count);
+}
+
+function getTopicExamForSearch(topicId) {
+  return EXAM_QS.find(q=>q.topic===topicId) || null;
+}
+
+function getTopicMethodsForSearch(topicId, count=2) {
+  const topic=TOPIC_MAP[topicId];
+  const ids=topic?.methods || [];
+  const fromTopic=ids.map(id=>METHODS.find(m=>m.id===id)).filter(Boolean);
+  const fromMethodIndex=METHODS.filter(m=>(m.topics || []).includes(topicId));
+  return [...fromTopic, ...fromMethodIndex]
+    .filter((m,i,arr)=>m && arr.findIndex(x=>x.id===m.id)===i)
+    .slice(0,count);
+}
+
+function getSearchWrongCauseLabel(text="") {
+  const raw=String(text || "");
+  const matched=SHUMAI_SEARCH_WRONG_CAUSES.find(w=>
+    raw.includes(w.name) ||
+    w.keywords.split(/\s+/).some(k=>k && raw.includes(k))
+  );
+  return matched?.name || raw || "先定位错因，再决定补法";
+}
+
+function buildSearchRepairSuggestion(entry) {
+  const topic=entry.topicId ? TOPIC_MAP[entry.topicId] : null;
+  const basics=topic ? getTopicBasicsForSearch(topic.id, 2) : [];
+  const exam=topic ? getTopicExamForSearch(topic.id) : null;
+  const methods=topic ? getTopicMethodsForSearch(topic.id, 2) : [];
+  const topicName=topic?.name || entry.eyebrow || "当前内容";
+  const methodNames=methods.map(m=>m.name).join("、") || "对应方法";
+  const basicNames=basics.map(q=>q.content).join(" / ");
+  const wrongCause=getSearchWrongCauseLabel(entry.desc || entry.text);
+  const defaultPrompts=[
+    `我搜到「${entry.title}」，先帮我判断该从哪一步补。`,
+    `围绕「${topicName}」给我一道不直接泄答案的同类题。`,
+  ];
+
+  if(entry.type==="topic") {
+    return {
+      label:"补法建议",
+      summary:`先把「${entry.title}」从概念、基础动作、真题语境三层补稳。`,
+      steps:[
+        `先补：看定义、常见条件和最高频错误，特别是「${topic.tips || "概念适用条件"}」。`,
+        basics.length ? `练哪类题：先做 ${basics.length} 道基础启动题，第一道可从「${basics[0].content}」开始。` : "练哪类题：先做同章节基础题，确认能独立启动第一步。",
+        exam ? `确认会了：再做 1 道 ${exam.yr} 年${exam.city || "中考"}真题，能不看解析写出关键步骤就算过关。` : "确认会了：隔天独立复做一道同类题，能说清题眼和方法就算过关。",
+      ],
+      practice:[
+        basics.length ? `基础题：${basicNames}` : "基础题：进入基础习题模块按该知识点练 2 题",
+        methods.length ? `方法：${methodNames}` : "方法：先找题眼，再决定代数、几何或统计入口",
+        exam ? `真题：${exam.yr} 年 ${exam.city || "中考"} 第${exam.no}题` : "真题：完成基础题后再进入真题筛选",
+      ],
+      prompts:[
+        `把「${entry.title}」讲成我能马上做题的三步。`,
+        `我学「${entry.title}」最容易错在哪里？`,
+      ],
+    };
+  }
+
+  if(entry.type==="basic" || entry.type==="exam") {
+    const isExam=entry.type==="exam";
+    return {
+      label:isExam ? "真题补法" : "题目补法",
+      summary:`这道题不要只看答案，先回到「${topicName}」和「${wrongCause}」两个断点。`,
+      steps:[
+        `关联知识点：先回看「${topicName}」的关键条件和启动步骤。`,
+        `方法入口：优先尝试「${methodNames}」，先写题眼，再写计算或证明。`,
+        isExam ? "确认会了：换一道同知识点真题限时完成，能解释每一步来源才算稳定。" : "确认会了：不看解析复做一遍，再换一道同类基础题。",
+      ],
+      practice:[
+        `错因提醒：${wrongCause}`,
+        basics.length ? `同类基础：${basicNames}` : "同类基础：进入基础题模块补 2 道",
+        exam && !isExam ? `同类真题：${exam.yr} 年 ${exam.city || "中考"} 第${exam.no}题` : `题目定位：${entry.eyebrow}`,
+      ],
+      prompts:[
+        `这道题的题眼是哪一句？`,
+        `不要直接给答案，只提醒我第一步怎么启动。`,
+      ],
+    };
+  }
+
+  if(entry.type==="method") {
+    const relatedTopics=(METHODS.find(m=>m.id===entry.methodId)?.topics || [])
+      .map(id=>TOPIC_MAP[id]?.name).filter(Boolean).slice(0,3);
+    return {
+      label:"方法练习建议",
+      summary:`「${entry.title}」要靠题型识别来练，不适合只背方法名。`,
+      steps:[
+        `先识别：看到${relatedTopics.length ? relatedTopics.join("、") : "对应题型"}时，先判断是否能用这个方法。`,
+        `再练题：从低难度题开始，要求写出“为什么选这个方法”。`,
+        "确认会了：换一个题面不同但方法相同的题，仍能独立选法。",
+      ],
+      practice:[
+        relatedTopics.length ? `适用题型：${relatedTopics.join("、")}` : "适用题型：进入 23 种方法页查看代表题",
+        entry.desc || "方法说明：先看适用条件，再看代表题",
+        "建议练习：1 道基础题 + 1 道同类真题",
+      ],
+      prompts:[
+        `什么时候该用「${entry.title}」？`,
+        `给我一道适合练「${entry.title}」的题。`,
+      ],
+    };
+  }
+
+  if(entry.type==="wrong") {
+    return {
+      label:"错因修复路径",
+      summary:`先把「${entry.title}」当成一个可修复动作，而不是一次失败记录。`,
+      steps:[
+        "先复盘：找出错误发生在读题、选法、计算、公式还是表达。",
+        "再降阶：用一道更简单的同类题，只练这个错因对应的动作。",
+        "确认会了：隔天独立复做，仍不犯同一类错，才从错因区清除。",
+      ],
+      practice:[
+        entry.desc,
+        "建议练习：先 1 道基础题，再 1 道真题小题",
+        "清除标准：看提示做对 → 隔天独立做对 → 一周后独立做对",
+      ],
+      prompts:[
+        `帮我判断「${entry.title}」通常怎么修。`,
+        "给我一道专门修这个错因的简单题。",
+      ],
+    };
+  }
+
+  if(entry.type==="ai") {
+    return {
+      label:"可直接问 AI",
+      summary:"这条结果本身就是提问词，适合在题目教练场里直接发给树脉学长。",
+      steps:[
+        "先选一题：最好在当前卡住的题目里使用。",
+        "再追问：如果提示仍不够，只追问题眼或第一步，不急着要完整答案。",
+        "确认会了：合上解析后，把同类题独立做一遍。",
+      ],
+      practice:[
+        `提问词：${entry.desc}`,
+        "适用场景：卡住但还想自己做出来",
+        "下一步：进入题目教练场使用 AI 三模式",
+      ],
+      prompts:[entry.desc, ...defaultPrompts].slice(0,2),
+    };
+  }
+
+  return {
+    label:"补法建议",
+    summary:`围绕「${entry.title}」先定位知识点，再选择练习。`,
+    steps:["先看关联知识点。","再做两道同类题。","最后用 AI 追问错因。"],
+    practice:[`关联：${topicName}`,"练习：基础题 + 真题","验证：隔天复做"],
+    prompts:defaultPrompts,
+  };
+}
+
 function searchShuMaiIndex(query, limitPerGroup=4) {
   const q=normalizeSearchText(query);
-  if(!q) return {top:[], groups:{topic:[],question:[],method:[],exam:[],ai:[]}};
+  if(!q) return {top:[], groups:{topic:[],question:[],method:[],wrong:[],exam:[],ai:[]}};
   const tokens=q.split(" ").filter(Boolean);
   const scored=SHUMAI_SEARCH_INDEX.map(entry=>{
     const title=normalizeSearchText(entry.title);
@@ -692,24 +849,31 @@ function searchShuMaiIndex(query, limitPerGroup=4) {
   }).filter(entry=>entry.score>0)
     .sort((a,b)=>b.score-a.score || a.title.length-b.title.length);
 
-  const groups={topic:[],question:[],method:[],exam:[],ai:[]};
+  const groups={topic:[],question:[],method:[],wrong:[],exam:[],ai:[]};
   scored.forEach(entry=>{
     if(groups[entry.group] && groups[entry.group].length<limitPerGroup) groups[entry.group].push(entry);
   });
-  return {top:scored.slice(0,6), groups};
+  const withSuggestion=entry=>({...entry, repair:buildSearchRepairSuggestion(entry)});
+  return {
+    top:scored.slice(0,6).map(withSuggestion),
+    groups:Object.fromEntries(Object.entries(groups).map(([key,items])=>[key,items.map(withSuggestion)])),
+  };
 }
 
 function ShuMaiSearchResults({query, results, onPick, compact=false}) {
   const hasAny=results.top.length>0 || Object.values(results.groups).some(arr=>arr.length>0);
-  const renderEntry=(entry, groupKey)=>(
+  const renderEntry=(entry, groupKey)=>{
+    const repair=entry.repair || buildSearchRepairSuggestion(entry);
+    const accent=entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo;
+    return (
     <button key={`${groupKey}-${entry.id}`} onMouseDown={e=>e.preventDefault()} onClick={()=>onPick(entry)}
       style={{
         width:"100%",
-        display:"grid",
-        gridTemplateColumns:compact?"minmax(0,1fr)":"minmax(0,1fr) auto",
-        gap:10,
+        display:"flex",
+        flexDirection:"column",
+        gap:9,
         textAlign:"left",
-        padding:compact?"10px 10px":"11px 12px",
+        padding:compact?"11px 10px":"12px",
         borderRadius:9,
         border:`1px solid ${C.border}`,
         background:C.s2,
@@ -719,13 +883,20 @@ function ShuMaiSearchResults({query, results, onPick, compact=false}) {
         maxWidth:"100%",
         overflow:"hidden",
       }}>
+      <span style={{display:"grid",gridTemplateColumns:compact?"minmax(0,1fr)":"minmax(0,1fr) auto",gap:10,minWidth:0,width:"100%"}}>
       <span style={{minWidth:0}}>
         <span style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:5,minWidth:0}}>
-          <span style={{fontSize:11,fontWeight:950,color:entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo,
-            background:(entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo)+"14",border:`1px solid ${(entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo)}2e`,
+          <span style={{fontSize:11,fontWeight:950,color:accent,
+            background:accent+"14",border:`1px solid ${accent}2e`,
             borderRadius:999,padding:"2px 7px",lineHeight:1.2}}>
             {entry.eyebrow}
           </span>
+          {repair?.label&&(
+            <span style={{fontSize:11,fontWeight:950,color:C.muted,border:`1px solid ${C.border}`,
+              borderRadius:999,padding:"2px 7px",lineHeight:1.2}}>
+              {repair.label}
+            </span>
+          )}
         </span>
         <span style={{display:"block",fontSize:compact?13:14,fontWeight:950,color:C.text,lineHeight:1.45,
           overflowWrap:"anywhere",wordBreak:compact?"break-all":"break-word"}}>
@@ -736,12 +907,51 @@ function ShuMaiSearchResults({query, results, onPick, compact=false}) {
           {entry.desc}
         </span>
       </span>
-      <span style={{alignSelf:compact?"start":"center",fontSize:12,fontWeight:950,color:entry.color || SEARCH_GROUP_COLORS[groupKey] || C.geo,
+      <span style={{alignSelf:compact?"start":"center",fontSize:12,fontWeight:950,color:accent,
         whiteSpace:compact?"normal":"nowrap",overflowWrap:"anywhere"}}>
         {entry.action}
       </span>
+      </span>
+      {repair&&(
+        <span style={{display:"block",width:"100%",minWidth:0,borderTop:`1px solid ${C.border}`,paddingTop:9}}>
+          <span style={{display:"block",fontSize:12,fontWeight:950,color:accent,lineHeight:1.55,
+            overflowWrap:"anywhere",wordBreak:"break-word"}}>
+            {repair.summary}
+          </span>
+          <span style={{display:"grid",gridTemplateColumns:compact?"1fr":"repeat(3,minmax(0,1fr))",gap:7,marginTop:8,minWidth:0}}>
+            {(repair.steps || []).slice(0,3).map((step,idx)=>(
+              <span key={idx} style={{display:"block",padding:"8px 9px",borderRadius:8,
+                background:C.s1,border:`1px solid ${C.border}`,minWidth:0}}>
+                <span style={{display:"block",fontSize:10,fontWeight:950,color:accent,marginBottom:3}}>0{idx+1}</span>
+                <span style={{display:"block",fontSize:11,color:C.muted,lineHeight:1.55,
+                  overflowWrap:"anywhere",wordBreak:"break-word"}}>
+                  {step}
+                </span>
+              </span>
+            ))}
+          </span>
+          <span style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,minWidth:0}}>
+            {(repair.practice || []).slice(0,compact?2:3).map((item,idx)=>(
+              <span key={idx} style={{fontSize:11,color:C.muted,lineHeight:1.45,border:`1px solid ${accent}22`,
+                background:accent+"0d",borderRadius:999,padding:"4px 8px",maxWidth:"100%",
+                overflowWrap:"anywhere",wordBreak:"break-word"}}>
+                {item}
+              </span>
+            ))}
+          </span>
+          <span style={{display:"grid",gridTemplateColumns:compact?"1fr":"repeat(2,minmax(0,1fr))",gap:6,marginTop:8,minWidth:0}}>
+            {(repair.prompts || []).slice(0,2).map((prompt,idx)=>(
+              <span key={idx} style={{fontSize:11,color:C.text,lineHeight:1.5,border:`1px solid ${C.cyan}2a`,
+                background:C.cyan+"0d",borderRadius:8,padding:"7px 8px",minWidth:0,
+                overflowWrap:"anywhere",wordBreak:"break-word"}}>
+                可问 AI：{prompt}
+              </span>
+            ))}
+          </span>
+        </span>
+      )}
     </button>
-  );
+  );};
 
   if(!query.trim()) {
     return (
