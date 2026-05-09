@@ -10225,7 +10225,7 @@ function PageAdmin({onNav}) {
             {[
               {label:"Skill 总数",val:skillSummary?.total||0,color:C.alg},
               {label:"启用中",val:skillSummary?.active||0,color:C.ok},
-              {label:"停用",val:skillSummary?.disabled||0,color:C.red},
+              {label:"30日调用",val:skillSummary?.events?.ai_used||0,color:C.sta},
               {label:"前台可用",val:skillSummary?.student_frontend||0,color:C.geo},
             ].map((s,i)=>(
               <div key={i} style={{padding:12,borderRadius:10,background:C.s1,border:`1px solid ${s.color}33`,textAlign:"center"}}>
@@ -10265,6 +10265,18 @@ function PageAdmin({onNav}) {
           </div>
 
           <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12,fontSize:13,color:C.muted}}>
+            <span style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
+              30日展示 {skillSummary?.events?.impressions||0}
+            </span>
+            <span style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
+              点击 {skillSummary?.events?.clicks||0}
+            </span>
+            <span style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
+              有帮助 {skillSummary?.events?.helpful||0}
+            </span>
+            <span style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
+              没帮助 {skillSummary?.events?.not_helpful||0}
+            </span>
             {(skillSummary?.byType||[]).slice(0,6).map(item=>(
               <span key={item.type} style={{padding:"4px 8px",borderRadius:999,background:C.s2,border:`1px solid ${C.border}`}}>
                 {item.type} · {item.total} · 权重均值 {item.avg_weight}
@@ -10276,7 +10288,7 @@ function PageAdmin({onNav}) {
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
                 <tr style={{borderBottom:`2px solid ${C.border}`}}>
-                  {["Skill","类型","场景","主题","权重","状态","更新时间","操作"].map(h=>(
+                  {["Skill","类型","场景","主题","质量","权重","状态","更新时间","操作"].map(h=>(
                     <th key={h} style={{padding:"8px 10px",textAlign:"left",color:C.muted,fontWeight:700,whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
@@ -10287,7 +10299,7 @@ function PageAdmin({onNav}) {
                 ))}
                 {skills.length===0&&(
                   <tr>
-                    <td colSpan={8} style={{padding:18,textAlign:"center",color:C.muted}}>
+                    <td colSpan={9} style={{padding:18,textAlign:"center",color:C.muted}}>
                       暂无 Skill，或筛选条件下没有结果。
                     </td>
                   </tr>
@@ -10765,6 +10777,8 @@ function SkillRow({item,api,onSaved}) {
     status==="disabled"?C.red:
     status==="draft"?C.sta:
     C.muted;
+  const quality=Number(item.quality_score || 0);
+  const qualityColor=quality>0.8?C.ok:quality<0?C.red:C.sta;
 
   return (
     <tr style={{borderBottom:`1px solid ${C.border}`}}>
@@ -10779,6 +10793,15 @@ function SkillRow({item,api,onSaved}) {
       <td style={{padding:"10px 10px",color:C.muted,whiteSpace:"nowrap"}}>{item.scene}</td>
       <td style={{padding:"10px 10px",color:C.muted,whiteSpace:"nowrap"}}>
         {item.topic_code || "—"}
+      </td>
+      <td style={{padding:"10px 10px",whiteSpace:"nowrap"}}>
+        <div style={{fontWeight:900,color:qualityColor}}>{quality.toFixed(2)}</div>
+        <div style={{fontSize:11,color:C.dim,marginTop:3}}>
+          展{item.impressions||0} 点{item.clicks||0} 用{item.ai_used||0}
+        </div>
+        <div style={{fontSize:11,color:C.dim}}>
+          好{item.helpful||0} / 弱{item.not_helpful||0}
+        </div>
       </td>
       <td style={{padding:"10px 10px"}}>
         <input value={weight} onChange={e=>setWeight(e.target.value)}

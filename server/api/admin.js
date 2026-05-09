@@ -171,16 +171,41 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
     }
 
     const listSql = `
-      SELECT id, skill_key, name, type, audience, subject, stage, grade,
-             topic_code, method_code, question_type, scene, goal, difficulty,
-             tone, content, model_role, trigger_tags, example_questions,
-             weight, version, status, created_at, updated_at
-      FROM prompt_skills
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY status DESC, weight DESC, updated_at DESC NULLS LAST, id DESC
+      WITH event_stats AS (
+        SELECT prompt_skill_id,
+               COUNT(*)::int AS events,
+               COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+               COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks,
+               COUNT(*) FILTER (WHERE event_type = 'ai_used')::int AS ai_used,
+               COUNT(*) FILTER (WHERE event_type = 'helpful')::int AS helpful,
+               COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS not_helpful
+        FROM prompt_skill_events
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY prompt_skill_id
+      )
+      SELECT s.id, s.skill_key, s.name, s.type, s.audience, s.subject, s.stage, s.grade,
+             s.topic_code, s.method_code, s.question_type, s.scene, s.goal, s.difficulty,
+             s.tone, s.content, s.model_role, s.trigger_tags, s.example_questions,
+             s.weight, s.version, s.status, s.created_at, s.updated_at,
+             COALESCE(es.events, 0) AS events,
+             COALESCE(es.impressions, 0) AS impressions,
+             COALESCE(es.clicks, 0) AS clicks,
+             COALESCE(es.ai_used, 0) AS ai_used,
+             COALESCE(es.helpful, 0) AS helpful,
+             COALESCE(es.not_helpful, 0) AS not_helpful,
+             ROUND((
+               (COALESCE(es.clicks, 0) * 0.5)
+               + (COALESCE(es.ai_used, 0) * 1.2)
+               + (COALESCE(es.helpful, 0) * 3.0)
+               - (COALESCE(es.not_helpful, 0) * 4.0)
+             )::numeric / GREATEST(COALESCE(es.impressions, 0), 1), 3) AS quality_score
+      FROM prompt_skills s
+      LEFT JOIN event_stats es ON es.prompt_skill_id = s.id
+      ${where.length ? `WHERE ${where.map(clause => clause.replace(/\b(skill_key|name|content|type|status|scene|subject)\b/g, 's.$1')).join(' AND ')}` : ''}
+      ORDER BY status DESC, quality_score DESC, s.weight DESC, s.updated_at DESC NULLS LAST, s.id DESC
       LIMIT ${limit}
     `;
-    const [list, totals, byType, byScene] = await Promise.all([
+    const [list, totals, byType, byScene, eventTotals] = await Promise.all([
       pool.query(listSql, params),
       pool.query(
         `SELECT COUNT(*)::int AS total,
@@ -201,6 +226,16 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
          GROUP BY scene
          ORDER BY total DESC, scene ASC`
       ),
+      pool.query(
+        `SELECT COUNT(*)::int AS events,
+                COUNT(*) FILTER (WHERE event_type = 'impression')::int AS impressions,
+                COUNT(*) FILTER (WHERE event_type = 'click')::int AS clicks,
+                COUNT(*) FILTER (WHERE event_type = 'ai_used')::int AS ai_used,
+                COUNT(*) FILTER (WHERE event_type = 'helpful')::int AS helpful,
+                COUNT(*) FILTER (WHERE event_type = 'not_helpful')::int AS not_helpful
+         FROM prompt_skill_events
+         WHERE created_at >= NOW() - INTERVAL '30 days'`
+      ),
     ]);
 
     res.json({
@@ -210,6 +245,7 @@ router.get('/skills', authMiddleware, adminGuard, async (req, res) => {
         active: Number(totals.rows[0]?.active || 0),
         disabled: Number(totals.rows[0]?.disabled || 0),
         student_frontend: Number(totals.rows[0]?.student_frontend || 0),
+        events: eventTotals.rows[0] || {},
         byType: byType.rows,
         byScene: byScene.rows,
       },
