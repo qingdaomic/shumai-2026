@@ -11248,12 +11248,34 @@ function SkillOperationTips({ops=[],meta={},onRefresh}) {
 function SkillOperationHistoryPanel({history,onClose,onRefresh}) {
   const [openKey,setOpenKey]=useState(null);
   if(!history?.skill) return null;
-  const SummaryBox=({title,value,color})=>(
+  const summarizeOperation=op=>{
+    const before=op.beforeValue || {};
+    const after=op.afterValue || {};
+    if(op.type==="降权" || before.weight!==undefined || after.weight!==undefined) {
+      return [
+        `权重：${before.weight ?? "-"} → ${after.weight ?? "-"}`,
+      ];
+    }
+    if(op.type==="改写" || before.contentLength!==undefined || after.contentLength!==undefined) {
+      return [
+        `内容字数：${before.contentLength ?? "-"} → ${after.contentLength ?? "-"}`,
+        before.contentPreview ? `改写前：${before.contentPreview}` : "",
+        after.contentPreview ? `改写后：${after.contentPreview}` : "",
+      ].filter(Boolean);
+    }
+    const keys=[...new Set([...Object.keys(before),...Object.keys(after)])];
+    return keys.length ? keys.map(k=>`${k}：${before[k] ?? "-"} → ${after[k] ?? "-"}`) : ["暂无前后摘要"];
+  };
+  const SummaryBox=({title,lines,color})=>(
     <div style={{padding:8,borderRadius:8,background:C.s2,border:`1px solid ${color}24`,minWidth:0}}>
       <div style={{fontSize:11,color,fontWeight:900,marginBottom:5}}>{title}</div>
-      <pre style={{margin:0,fontSize:11,lineHeight:1.5,color:C.muted,whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontFamily:"monospace"}}>
-        {JSON.stringify(value && Object.keys(value).length ? value : {}, null, 2)}
-      </pre>
+      <div style={{display:"grid",gap:4}}>
+        {lines.map((line,i)=>(
+          <div key={i} style={{fontSize:12,lineHeight:1.55,color:C.muted,overflowWrap:"anywhere"}}>
+            {line}
+          </div>
+        ))}
+      </div>
     </div>
   );
   return (
@@ -11302,8 +11324,7 @@ function SkillOperationHistoryPanel({history,onClose,onRefresh}) {
                 </div>
                 {open&&(
                   <div style={{marginTop:8,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
-                    <SummaryBox title="操作前" value={op.beforeValue} color={C.red}/>
-                    <SummaryBox title="操作后" value={op.afterValue} color={C.ok}/>
+                    <SummaryBox title="中文摘要" lines={summarizeOperation(op)} color={C.ok}/>
                     <div style={{padding:8,borderRadius:8,background:C.s2,border:`1px solid ${C.border}`,minWidth:0}}>
                       <div style={{fontSize:11,color:C.purple,fontWeight:900,marginBottom:5}}>原因 / 来源</div>
                       <div style={{fontSize:12,color:C.muted,lineHeight:1.6,overflowWrap:"anywhere"}}>
