@@ -7,7 +7,7 @@ import {
 } from '../services/prompt-skills.js';
 
 const router = Router();
-const ALLOWED_EVENTS = new Set(['impression', 'click']);
+const ALLOWED_EVENTS = new Set(['impression', 'click', 'ai_used', 'helpful', 'not_helpful']);
 
 // POST /api/skills/recommend — 推荐 3 条“你可以这样问”
 router.post('/recommend', authMiddleware, async (req, res) => {
@@ -25,13 +25,13 @@ router.post('/recommend', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/skills/event — 记录 impression / click
+// POST /api/skills/event — 记录 impression / click / ai_used / helpful / not_helpful
 router.post('/event', authMiddleware, async (req, res) => {
   try {
     const body = req.body || {};
     const eventType = String(body.event_type || body.eventType || '').trim();
     if (!ALLOWED_EVENTS.has(eventType)) {
-      return res.status(400).json({ error: 'event_type 只支持 impression / click' });
+      return res.status(400).json({ error: 'event_type 只支持 impression / click / ai_used / helpful / not_helpful' });
     }
     if (!body.skill_key && !body.skillKey && !body.skill_id && !body.skillId) {
       return res.status(400).json({ error: '缺少 skill_key 或 skill_id' });

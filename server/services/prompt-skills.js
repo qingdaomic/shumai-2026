@@ -5,7 +5,7 @@ import pool from '../db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SEED_PATH = path.resolve(__dirname, '../seeds/prompt_skills_seed.json');
-const ALLOWED_EVENTS = new Set(['impression', 'click']);
+const ALLOWED_EVENTS = new Set(['impression', 'click', 'ai_used', 'helpful', 'not_helpful']);
 const DEFAULT_LIMIT = 3;
 const MAX_LIMIT = 8;
 
@@ -46,7 +46,7 @@ export async function recordPromptSkillEvent(input = {}) {
     return {
       ok: false,
       stored: false,
-      reason: 'event_type 只支持 impression / click',
+      reason: 'event_type 只支持 impression / click / ai_used / helpful / not_helpful',
     };
   }
 

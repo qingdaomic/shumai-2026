@@ -1239,6 +1239,36 @@ async function recordSlashPromptEvent(eventType, item, ctx) {
   } catch {}
 }
 
+async function recordSkillAnswerEvent(eventType, item, ctx, extra={}) {
+  if(!item?.skill_key) return;
+  const token=window.__SHUMAI_TOKEN || localStorage.getItem("shumai_auth_token") || "";
+  try {
+    await fetch(`${BACKEND_URL}/api/skills/event`, {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        ...(token?{"Authorization":`Bearer ${token}`}:{})
+      },
+      body:JSON.stringify({
+        event_type:eventType,
+        skill_key:item.skill_key,
+        question_id:ctx.question_id,
+        question_type:ctx.question_type,
+        topic_code:ctx.topic_code,
+        method_code:ctx.method_code,
+        scene:ctx.scene,
+        metadata:{
+          entry:"skill_answer",
+          source:item.source,
+          label:item.label,
+          viewport:ctx.viewport,
+          ...extra,
+        },
+      }),
+    });
+  } catch {}
+}
+
 async function askTutorSkillAI({q, item, mode, history, viewport}) {
   const nq=normalizeTutorQuestion(q);
   const ctx=buildSlashContext(nq, mode, viewport);
@@ -11101,9 +11131,12 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
   const [slashOpen,setSlashOpen]=useState(false);
   const [slashItems,setSlashItems]=useState([]);
   const [slashLoading,setSlashLoading]=useState(false);
+  const [feedback,setFeedback]=useState("");
   const slashImpressedRef=useRef("");
+  const activeSkillItemRef=useRef(null);
   const recRef=useRef(null);
   const slashBoxRef=useRef(null);
+  const aiUsedRef=useRef(false);
   const {isMobile}=useBP();
   const viewport=isMobile?"mobile":"desktop";
   const slashContext=useMemo(()=>buildSlashContext(q, mode, viewport),[q, mode, viewport]);
@@ -11165,6 +11198,14 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
         history,
       });
       setText(result);
+      setFeedback("");
+      if(!aiUsedRef.current && activeSkillItemRef.current) {
+        aiUsedRef.current = true;
+        recordSkillAnswerEvent("ai_used", activeSkillItemRef.current, slashContext, {
+          entry:"ask_tutor",
+          mode,
+        });
+      }
       setHistory(prev=>[...prev,{r:"user",t:askText},{r:"ai",t:result}]);
     } catch(e) { setText("⚠️ AI暂时不在线，请稍后重试"); }
     setLoading(false);
@@ -11204,12 +11245,21 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
     setFollowUp("");
     stopVoice();
     setLoading(true);
+    activeSkillItemRef.current=item || null;
+    aiUsedRef.current=false;
     const askText=item?.label || item?.prompt || "先提醒我第一步";
     setHistory(prev=>[...prev,{r:"user",t:askText}]);
     try {
       recordSlashPromptEvent("click", item, slashContext);
       const result=await askTutorSkillAI({q, item, mode, history, viewport});
       setText(result);
+      setFeedback("");
+      if(item) {
+        recordSkillAnswerEvent("ai_used", item, slashContext, {
+          entry:"ask_tutor",
+          mode,
+        });
+      }
       setHistory(prev=>[...prev,{r:"ai",t:result}]);
     } catch(e) {
       setText("学长这一步没接上，你可以再点一次。");
@@ -11238,6 +11288,23 @@ function AskTutor({q, topicName, mode="explain", label="问学长"}) {
           ):text?(
             <>
               <div style={{fontSize:15,color:C.text,lineHeight:1.8,whiteSpace:"pre-wrap",marginBottom:10}}>{text}</div>
+              {activeSkillItemRef.current&&!feedback&&(
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                  <button onClick={()=>{setFeedback("helpful");recordSkillAnswerEvent("helpful",activeSkillItemRef.current,slashContext,{entry:"ask_tutor_feedback",mode});}}
+                    style={{padding:"7px 10px",borderRadius:10,border:`1px solid ${C.geo}30`,background:C.geo+"10",color:C.geo,fontSize:13,fontWeight:800,cursor:"pointer"}}>
+                    有帮助
+                  </button>
+                  <button onClick={()=>{setFeedback("not_helpful");recordSkillAnswerEvent("not_helpful",activeSkillItemRef.current,slashContext,{entry:"ask_tutor_feedback",mode});}}
+                    style={{padding:"7px 10px",borderRadius:10,border:`1px solid ${C.red}30`,background:C.red+"10",color:C.red,fontSize:13,fontWeight:800,cursor:"pointer"}}>
+                    没帮助
+                  </button>
+                </div>
+              )}
+              {feedback&&(
+                <div style={{marginBottom:10,fontSize:13,fontWeight:800,color:feedback==="helpful"?C.geo:C.red}}>
+                  已记录为 {feedback==="helpful"?"有帮助":"没帮助"}，系统会据此调整后续推荐。
+                </div>
+              )}
               {loading&&<div style={{fontSize:13,color:"#a78bfa",marginBottom:8}}>💭 学长正在回答...</div>}
               {/* 追问输入行 */}
               <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:isMobile?"wrap":"nowrap"}}>
