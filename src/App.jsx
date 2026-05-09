@@ -903,7 +903,22 @@ function searchShuMaiIndex(query, limitPerGroup=4) {
   };
 }
 
-function ShuMaiSearchResults({query, results, onPick, compact=false}) {
+function buildSearchSkillContext(query, results) {
+  const topEntry = results?.top?.[0] || Object.values(results?.groups || {}).flat().find(Boolean) || null;
+  return {
+    question_id: topEntry?.qid ? String(topEntry.qid) : query ? `search:${normalizeSearchText(query).slice(0, 48)}` : "",
+    topic_code: topEntry?.topicId || "",
+    method_code: topEntry?.methodId || "",
+    question_type: topEntry?.type || "all",
+    subject: "math",
+    stage: "middle",
+    scene: topEntry?.type === "method" ? "method_search" : topEntry?.type === "wrong" ? "wrong_search" : "search",
+    error_type: topEntry?.type === "wrong" ? topEntry?.title : "",
+    student_state: topEntry?.type === "wrong" ? "wrong_fix" : topEntry?.type === "method" ? "method_match" : "searching",
+  };
+}
+
+function ShuMaiSearchResults({query, results, onPick, compact=false, skillPrompts=[], skillLoading=false}) {
   const hasAny=results.top.length>0 || Object.values(results.groups).some(arr=>arr.length>0);
   const renderEntry=(entry, groupKey)=>{
     const repair=entry.repair || buildSearchRepairSuggestion(entry);
@@ -1014,6 +1029,76 @@ function ShuMaiSearchResults({query, results, onPick, compact=false}) {
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:compact?10:12,minWidth:0}}>
+      {(skillPrompts.length>0 || skillLoading)&&(
+        <section style={{minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:950,color:C.cyan,margin:"0 0 7px"}}>
+            SKE 推荐问法
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:7,minWidth:0}}>
+            {skillLoading&&!skillPrompts.length?(
+              <div style={{padding:"12px 10px",borderRadius:9,border:`1px solid ${C.border}`,background:C.s2,color:C.muted,fontSize:13}}>
+                正在根据当前搜索找适合的提问词...
+              </div>
+            ):skillPrompts.slice(0, compact ? 3 : 5).map(item=>(
+              <button key={item.skill_key} onMouseDown={e=>e.preventDefault()} onClick={()=>onPick?.({
+                id:`skill-${item.skill_key}`,
+                group:"ai",
+                type:"ai",
+                title:item.label,
+                eyebrow:"SKE 推荐问法",
+                desc:item.prompt,
+                action:"去题目教练场",
+                skill_key:item.skill_key,
+                source:item.source,
+                repair:{
+                  label:"SKE 提问词",
+                  summary:"这是一条由当前搜索和本地 Skill 权重共同决定的追问词。",
+                  steps:[
+                    "先在当前搜索结果里确认自己最像卡在什么位置。",
+                    "再把这个提问词带到题目教练场或 AI 学长里。",
+                    "如果回答有帮助，后续推荐会继续往这个方向靠。",
+                  ],
+                  practice:[
+                    "适用：当前搜索场景",
+                    "动作：直接问 AI",
+                    "回流：用于排序权重",
+                  ],
+                  prompts:[item.prompt],
+                },
+              })} style={{
+                width:"100%",
+                textAlign:"left",
+                padding:compact?"11px 10px":"12px",
+                borderRadius:9,
+                border:`1px solid ${C.cyan}26`,
+                background:`linear-gradient(135deg, ${C.cyan}10, ${C.s2})`,
+                color:C.text,
+                cursor:"pointer",
+                minWidth:0,
+                maxWidth:"100%",
+                overflow:"hidden",
+              }}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",minWidth:0}}>
+                  <span style={{fontSize:11,fontWeight:950,color:C.cyan,border:`1px solid ${C.cyan}2d`,
+                    background:C.cyan+"14",borderRadius:999,padding:"2px 7px",lineHeight:1.2}}>
+                    AI 问法
+                  </span>
+                  <span style={{fontSize:11,fontWeight:950,color:C.muted,border:`1px solid ${C.border}`,
+                    borderRadius:999,padding:"2px 7px",lineHeight:1.2}}>
+                    SKE
+                  </span>
+                </div>
+                <div style={{marginTop:6,fontSize:13,fontWeight:950,color:C.text,lineHeight:1.45,overflowWrap:"anywhere"}}>
+                  {item.label}
+                </div>
+                <div style={{marginTop:4,fontSize:12,color:C.muted,lineHeight:1.55,overflowWrap:"anywhere"}}>
+                  {item.prompt}
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {results.top.length>0&&(
         <section style={{minWidth:0}}>
           <div style={{fontSize:12,fontWeight:950,color:C.geo,margin:"0 0 7px"}}>
@@ -1046,6 +1131,8 @@ function ShuMaiSearchBox({variant="home", onPick}) {
   const [query,setQuery]=useState(initialQuery);
   const [open,setOpen]=useState(!!initialQuery);
   const [mobileOpen,setMobileOpen]=useState(false);
+  const [skillPrompts,setSkillPrompts]=useState([]);
+  const [skillLoading,setSkillLoading]=useState(false);
   const wrapRef=useRef(null);
   const results=useMemo(()=>searchShuMaiIndex(query),[query]);
   const strong=variant==="math";
@@ -1065,6 +1152,23 @@ function ShuMaiSearchBox({variant="home", onPick}) {
     window.addEventListener("mousedown",handler);
     return ()=>window.removeEventListener("mousedown",handler);
   },[isMobile]);
+
+  useEffect(()=>{
+    let alive=true;
+    const trimmed=query.trim();
+    if(!trimmed){
+      setSkillPrompts([]);
+      setSkillLoading(false);
+      return;
+    }
+    const ctx=buildSearchSkillContext(trimmed, results);
+    setSkillLoading(true);
+    fetchSlashPrompts(ctx)
+      .then(items=>{ if(alive) setSkillPrompts(items); })
+      .catch(()=>{ if(alive) setSkillPrompts(SLASH_FALLBACK_PROMPTS.map((p,idx)=>normalizeSlashSkill(p,idx,"local"))); })
+      .finally(()=>{ if(alive) setSkillLoading(false); });
+    return()=>{ alive=false; };
+  },[query, results]);
 
   const handlePick=(entry)=>{
     setOpen(false);
@@ -1143,7 +1247,7 @@ function ShuMaiSearchBox({variant="home", onPick}) {
               boxShadow:"0 18px 44px rgba(0,0,0,.24)",
               minWidth:0,
             }}>
-              <ShuMaiSearchResults query={query} results={results} onPick={handlePick}/>
+              <ShuMaiSearchResults query={query} results={results} onPick={handlePick} skillPrompts={skillPrompts} skillLoading={skillLoading}/>
             </div>
           )}
         </>
@@ -1188,7 +1292,7 @@ function ShuMaiSearchBox({variant="home", onPick}) {
                   style={{...inputStyle,height:44,borderColor:accent+"66",borderRadius:12}}/>
               </div>
             </div>
-            <ShuMaiSearchResults query={query} results={results} onPick={handlePick} compact/>
+            <ShuMaiSearchResults query={query} results={results} onPick={handlePick} compact skillPrompts={skillPrompts} skillLoading={skillLoading}/>
           </div>
         </>
       )}
